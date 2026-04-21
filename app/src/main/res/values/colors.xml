@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material 3 seed: finance-neutral teal/green. Light scheme. -->
+    <color name="md_theme_primary">#00687A</color>
+    <color name="md_theme_onPrimary">#FFFFFF</color>
+    <color name="md_theme_secondary">#4B6268</color>
+    <color name="md_theme_onSecondary">#FFFFFF</color>
+
+    <!-- Dark scheme -->
+    <color name="md_theme_primary_dark">#7DD2E3</color>
+    <color name="md_theme_onPrimary_dark">#003640</color>
+    <color name="md_theme_secondary_dark">#B2CBD1</color>
+    <color name="md_theme_onSecondary_dark">#1D343A</color>
+
+    <!-- Semantic colors for P&L -->
+    <color name="pnl_positive">#1B873F</color>
+    <color name="pnl_negative">#C62828</color>
+    <color name="pnl_neutral">#6B7280</color>
+
+    <!-- Launcher -->
+    <color name="ic_launcher_background">#00687A</color>
+</resources>

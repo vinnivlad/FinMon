@@ -1,0 +1,70 @@
+The program is a personal financial portfolio manager, that allows to input all assets from different financial markets into a single application, 
+keep track of all changes in the portfolio and provide statistics, summaries and graphs about past or current state of the portfolio: 
+total amount of assess in different currencies, total amount represented in a selected currency, graphs to illustrate chages in the portfolio over time,
+Profit and Loss statistics for a selected period, including or excluding cash deposits. Profit and loss statistics over period is the main goal: by default only profits and
+losses for stocks and bonds must be included in the calculation.
+
+Program is a mobile application for Andriod written preferably in JAVA.
+Program has to be able to store it's database on a device. 
+
+===ASSET===
+ -id
+ -ticker
+ -currency [USD, EUR, UAH]
+ -type [STOCK, BOND, CASH]
+ -bondData:
+		-maturityDate
+		-initialPrice -(default is 1000)
+		-yield - in percents
+ 
+Represents an asses type in portfolio. It can be bond, stock or cash reserves in different currencies.
+Some assets are preconfigured from start, like cash piles for every currency, other assets can be added via ui interface.
+
+===EVENT===	
+- id
+- Date - date when financial event happened
+- Type - type of the event [DEBIT, CREDIT]
+- Asset Id - Id of the asset
+- Amount - amount of asset acquired or lost. For cash pile this is amount of cash in given currency.
+- Price - price per 1 quantity of asset. For cash pile this is always 1.
+
+Represents an event that happened in port/folio. It can be a purchase or sell or adding/withdrawal cash to the portfolio.
+The event history is kept to be able to understand what assets and in which amount are present in a portfolio at a certain date.
+	
+===EXCHANGE RATE===
+- Source Currency
+- Target Currency
+- Exchange Rate 
+- Date
+
+Stores exchange rates per date for supported currencies. Used to store historical data locally for future use in computations
+
+===STOCK PRICE===
+- Ticker
+- Date
+- Close Price - market closure price
+
+Stores market closure price per ticker for given date in the past. Used to store historical data locally for future use in computations
+
+===STOCK Price
+- Ticker
+- Date
+- Close Price - market closure price
+
+Stores market closure price per ticker for given date in the past. Used to store historical data locally for future use in computations
+
+===PORTFOLIO VALUE===
+- TOTAL_USD - total value of all assets and cash converted into USD
+- TOTAL_EURO - total value of all assets and cash converted into EURO
+- TOTAL_UAH - total value of all assets and cash converted into UAH
+- PART_USD - total value of all USD assets excluding non-USD assets
+- PART_EURO - total value of all EURO assets excluding non-EURO assets
+- PART_UAH - total value of all UAH assets excluding non-UAH assets
+- Date
+
+Stores precomputed portfolio value data for given date in the past. Used to store historical data locally for future use in computations
+
+
+Every time app is started - it checks which date in the past D is last to have stored exchange rate, stock prices or precomputed portfolio value, then it retrieves 
+data from D-1 to YESTERDAY from a 3rd party api and stores it locally. Based on recieved data it computes portfolio value for missing dates in the past and also stores it.
+IF this functionality can be implemented as a background job - great, do it. Schedule it to perform twice a day. 

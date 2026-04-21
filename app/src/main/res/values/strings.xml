@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">FinMon</string>
+    <string name="portfolio_title">Portfolio</string>
+    <string name="portfolio_placeholder">No holdings yet. Add your first asset to start tracking market P&amp;L separately from cash flows.</string>
+</resources>
