@@ -32,6 +32,17 @@ public interface ExchangeRateDao {
     @Nullable
     ExchangeRateEntity findMostRecent(Currency src, Currency tgt);
 
+    /**
+     * Most recent rate on or before {@code onOrBefore}. Used when an exact-date lookup
+     * fails (weekend, holiday, sync hasn't caught up yet) — reporting-currency totals
+     * should still compute with a slightly-stale-but-available rate rather than gap out.
+     */
+    @Query("SELECT * FROM exchange_rate "
+            + "WHERE sourceCurrency = :src AND targetCurrency = :tgt AND date <= :onOrBefore "
+            + "ORDER BY date DESC LIMIT 1")
+    @Nullable
+    ExchangeRateEntity findOnOrBefore(Currency src, Currency tgt, LocalDate onOrBefore);
+
     @Query("SELECT MAX(date) FROM exchange_rate "
             + "WHERE sourceCurrency = :src AND targetCurrency = :tgt")
     @Nullable

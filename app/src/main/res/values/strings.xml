@@ -1,5 +1,39 @@
 <resources>
     <string name="app_name">FinMon</string>
+
+    <!-- Portfolio screen -->
     <string name="portfolio_title">Portfolio</string>
     <string name="portfolio_placeholder">No holdings yet. Add your first asset to start tracking market P&amp;L separately from cash flows.</string>
+    <string name="fab_add">Add</string>
+    <string name="menu_add_asset">Add asset</string>
+    <string name="menu_record_trade">Record trade</string>
+
+    <!-- Add asset screen -->
+    <string name="add_asset_title">Add asset</string>
+    <string name="field_ticker">Ticker</string>
+    <string name="field_ticker_hint">e.g. AAPL, VWCE, OVDP-2029-06</string>
+    <string name="field_stooq_ticker">Stooq ticker (optional)</string>
+    <string name="field_stooq_ticker_hint">e.g. aapl.us — leave blank if not on Stooq (bonds, UAH assets)</string>
+    <string name="field_currency">Currency</string>
+    <string name="field_type">Type</string>
+    <string name="field_bond_maturity">Maturity date</string>
+    <string name="field_bond_face">Face value</string>
+    <string name="field_bond_yield">Yield %</string>
+    <string name="action_save">Save</string>
+    <string name="error_required">Required</string>
+
+    <!-- Record trade screen -->
+    <string name="add_trade_title">Record trade</string>
+    <string name="field_side">Side</string>
+    <string name="field_asset">Asset</string>
+    <string name="field_quantity">Quantity</string>
+    <string name="field_price">Price per unit</string>
+    <string name="field_trade_date">Trade date</string>
+    <string name="trade_no_assets">No tradeable assets yet. Add an asset first from the + menu.</string>
+    <string name="error_invalid_number">Invalid number</string>
+
+    <!-- Portfolio totals card -->
+    <string name="totals_card_label">Portfolio value</string>
+    <string name="totals_invested_label">Invested: %1$s</string>
+    <string name="totals_fx_gap_hint">Some FX rates missing — figures may be slightly off.</string>
 </resources>

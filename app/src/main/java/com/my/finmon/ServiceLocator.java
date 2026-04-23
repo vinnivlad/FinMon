@@ -39,6 +39,7 @@ public final class ServiceLocator {
 
     private final FinMonDatabase database;
     private final ExecutorService ioExecutor;
+    private final ExecutorService viewExecutor;
     private final OkHttpClient httpClient;
     private final PortfolioRepository portfolioRepository;
     private final MarketDataRepository marketDataRepository;
@@ -48,6 +49,15 @@ public final class ServiceLocator {
 
         this.ioExecutor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "finmon-io");
+            t.setPriority(Thread.NORM_PRIORITY - 1);
+            return t;
+        });
+
+        // Small pool for ViewModels that block on repo Futures to forward results to
+        // LiveData — cannot reuse ioExecutor because Future.get() on the same single
+        // thread would deadlock.
+        this.viewExecutor = Executors.newFixedThreadPool(2, r -> {
+            Thread t = new Thread(r, "finmon-view-bridge");
             t.setPriority(Thread.NORM_PRIORITY - 1);
             return t;
         });
@@ -77,6 +87,8 @@ public final class ServiceLocator {
         this.portfolioRepository = new PortfolioRepository(
                 database.assetDao(),
                 database.eventDao(),
+                database.stockPriceDao(),
+                database.exchangeRateDao(),
                 ioExecutor);
 
         this.marketDataRepository = new MarketDataRepository(
@@ -104,6 +116,7 @@ public final class ServiceLocator {
 
     @NonNull public FinMonDatabase database() { return database; }
     @NonNull public ExecutorService ioExecutor() { return ioExecutor; }
+    @NonNull public ExecutorService viewExecutor() { return viewExecutor; }
     @NonNull public PortfolioRepository portfolioRepository() { return portfolioRepository; }
     @NonNull public MarketDataRepository marketDataRepository() { return marketDataRepository; }
 }

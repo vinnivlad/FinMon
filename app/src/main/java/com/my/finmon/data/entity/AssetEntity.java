@@ -32,6 +32,19 @@ public class AssetEntity {
     @NonNull
     public AssetType type;
 
+    /**
+     * Exchange-suffixed ticker understood by Stooq (e.g. {@code aapl.us}, {@code vwce.de}).
+     * Null for assets Stooq can't price — CASH piles, Ukrainian OVDPs (no {@code .ua}
+     * coverage), or any manual-price instrument. The sync worker silently skips rows
+     * where this is null.
+     *
+     * Kept separate from {@link #ticker} so the domain symbol ("AAPL") stays clean and we
+     * don't couple the schema to one remote source. If we later swap Stooq, only this
+     * column (and the Stooq fetch path) changes.
+     */
+    @Nullable
+    public String stooqTicker;
+
     @Nullable
     public LocalDate bondMaturityDate;
 

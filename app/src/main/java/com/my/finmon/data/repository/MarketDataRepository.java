@@ -57,17 +57,19 @@ public final class MarketDataRepository {
     }
 
     /**
-     * Fetches daily closes for {@code ticker} in [{@code from}, {@code to}] inclusive and
-     * upserts them into {@code stock_price}. Returns the number of rows written (0 if
-     * Stooq had nothing for the range).
+     * Fetches daily closes for {@code stooqTicker} (exchange-suffixed, e.g. {@code aapl.us})
+     * in [{@code from}, {@code to}] inclusive and upserts them into {@code stock_price}.
+     * Rows are keyed by {@code storageTicker} (the domain symbol, e.g. {@code AAPL}) so
+     * they line up with {@code asset.ticker}. Returns the number of rows written.
      */
     @NonNull
     public Future<Integer> fetchAndStoreStockPrices(
-            @NonNull String ticker,
+            @NonNull String stooqTicker,
+            @NonNull String storageTicker,
             @NonNull LocalDate from,
             @NonNull LocalDate to) {
         return executor.submit(() -> {
-            List<StockPriceEntity> rows = stooqClient.fetchDaily(ticker, from, to);
+            List<StockPriceEntity> rows = stooqClient.fetchDaily(stooqTicker, storageTicker, from, to);
             if (!rows.isEmpty()) {
                 stockPriceDao.upsertAll(rows);
             }

@@ -36,13 +36,18 @@ public final class StooqClient {
     }
 
     /**
-     * Daily EOD prices for {@code ticker} in [{@code from}, {@code to}] inclusive.
+     * Daily EOD prices for {@code stooqTicker} (exchange-suffixed symbol used in the URL,
+     * e.g. {@code aapl.us}) in [{@code from}, {@code to}] inclusive. Returned rows carry
+     * {@code storageTicker} (the domain symbol, e.g. {@code AAPL}) so they key cleanly
+     * against {@code asset.ticker} in the DB.
+     *
      * Empty list if Stooq has no data for the range (unknown ticker, all non-trading
      * days, etc.). Throws on network error, non-2xx response, or rejected/missing key.
      */
     @NonNull
     public List<StockPriceEntity> fetchDaily(
-            @NonNull String ticker,
+            @NonNull String stooqTicker,
+            @NonNull String storageTicker,
             @NonNull LocalDate from,
             @NonNull LocalDate to) throws IOException {
 
@@ -50,7 +55,7 @@ public final class StooqClient {
                 .scheme("https")
                 .host(HOST)
                 .addPathSegments("q/d/l/")
-                .addQueryParameter("s", ticker)
+                .addQueryParameter("s", stooqTicker)
                 .addQueryParameter("d1", from.format(YYYYMMDD))
                 .addQueryParameter("d2", to.format(YYYYMMDD))
                 .addQueryParameter("i", "d")
@@ -60,11 +65,11 @@ public final class StooqClient {
         Request req = new Request.Builder().url(url).get().build();
         try (Response resp = http.newCall(req).execute()) {
             if (!resp.isSuccessful()) {
-                throw new IOException("Stooq HTTP " + resp.code() + " for ticker " + ticker);
+                throw new IOException("Stooq HTTP " + resp.code() + " for " + stooqTicker);
             }
             ResponseBody body = resp.body();
             String csv = (body == null) ? "" : body.string();
-            return StooqCsvParser.parse(csv, ticker);
+            return StooqCsvParser.parse(csv, storageTicker);
         }
     }
 }

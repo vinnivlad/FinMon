@@ -28,7 +28,7 @@ Some assets are preconfigured from start, like cash piles for every currency, ot
 - Amount - amount of asset acquired or lost. For cash pile this is amount of cash in given currency.
 - Price - price per 1 quantity of asset. For cash pile this is always 1.
 
-Represents an event that happened in port/folio. It can be a purchase or sell or adding/withdrawal cash to the portfolio.
+Represents an event that happened in portfolio. It can be a purchase or sell or adding/withdrawal cash to the portfolio.
 The event history is kept to be able to understand what assets and in which amount are present in a portfolio at a certain date.
 	
 ===EXCHANGE RATE===
