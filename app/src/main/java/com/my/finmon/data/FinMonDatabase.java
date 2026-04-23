@@ -34,7 +34,7 @@ import com.my.finmon.data.entity.StockPriceEntity;
 @TypeConverters(Converters.class)
 public abstract class FinMonDatabase extends RoomDatabase {
 
-    private static final String DB_NAME = "finmon.db";
+    public static final String DB_NAME = "finmon.db";
 
     private static volatile FinMonDatabase INSTANCE;
 

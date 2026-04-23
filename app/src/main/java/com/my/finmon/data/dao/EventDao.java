@@ -60,4 +60,15 @@ public abstract class EventDao {
             + "AND timestamp <= :upTo "
             + "ORDER BY timestamp ASC, id ASC")
     public abstract List<EventEntity> getIncomeFromAssetAsOf(long sourceAssetId, LocalDateTime upTo);
+
+    /**
+     * Number of events at exactly {@code ts} whose asset is NOT cash. Used by the
+     * portfolio-totals query to distinguish a trade-leg cash event (paired with a
+     * stock/bond event at the same timestamp) from a standalone deposit or withdrawal.
+     * Only the latter counts as external capital.
+     */
+    @Query("SELECT COUNT(*) FROM event e "
+            + "INNER JOIN asset a ON e.assetId = a.id "
+            + "WHERE e.timestamp = :ts AND a.type != 'CASH'")
+    public abstract int countNonCashEventsAt(LocalDateTime ts);
 }

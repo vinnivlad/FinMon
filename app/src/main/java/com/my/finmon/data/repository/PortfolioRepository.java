@@ -238,15 +238,19 @@ public final class PortfolioRepository {
             valueInBase = valueInBase.add(converted);
         }
 
-        // Invested: sum every cash event with incomeSourceAssetId == null. IN = deposit,
-        // OUT = withdrawal. Per-bucket stays native. Base conversion uses FX at the
-        // event's date, so FX moves after deposit are captured as market P&L.
+        // Invested: sum cash events that represent EXTERNAL capital flow — standalone
+        // deposits and withdrawals only. Trade legs (cash OUT on buy / cash IN on sell)
+        // share a timestamp with their paired stock/bond event and are filtered out;
+        // the money didn't leave the portfolio, it just changed form. Per-bucket stays
+        // native. Base conversion uses FX at the event's date, so FX moves after
+        // deposit are captured as market P&L.
         BigDecimal investedInBase = BigDecimal.ZERO;
         for (AssetEntity cashAsset : assetDao.findByType(AssetType.CASH)) {
             BigDecimal bucket = BigDecimal.ZERO;
             List<EventEntity> events = eventDao.getByAssetAsOf(cashAsset.id, upTo);
             for (EventEntity ev : events) {
                 if (ev.incomeSourceAssetId != null) continue;  // coupons/dividends are not capital
+                if (eventDao.countNonCashEventsAt(ev.timestamp) > 0) continue;  // trade leg
                 BigDecimal signed = (ev.type == EventType.IN) ? ev.amount : ev.amount.negate();
                 bucket = bucket.add(signed);
                 BigDecimal baseContribution = convert(

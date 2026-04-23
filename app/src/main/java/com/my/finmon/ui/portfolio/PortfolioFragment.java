@@ -72,6 +72,10 @@ public class PortfolioFragment extends Fragment {
 
         viewModel.totals().observe(getViewLifecycleOwner(), this::bindTotals);
 
+        binding.totalsCard.setOnClickListener(v ->
+                NavHostFragment.findNavController(this)
+                        .navigate(R.id.action_portfolio_to_breakdown));
+
         binding.fab.setOnClickListener(this::showFabMenu);
     }
 

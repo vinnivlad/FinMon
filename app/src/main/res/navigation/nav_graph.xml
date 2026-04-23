@@ -18,6 +18,10 @@
         <action
             android:id="@+id/action_portfolio_to_addTrade"
             app:destination="@id/addTradeFragment" />
+
+        <action
+            android:id="@+id/action_portfolio_to_breakdown"
+            app:destination="@id/currencyBreakdownFragment" />
     </fragment>
 
     <fragment
@@ -31,5 +35,11 @@
         android:name="com.my.finmon.ui.addtrade.AddTradeFragment"
         android:label="@string/add_trade_title"
         tools:layout="@layout/fragment_add_trade" />
+
+    <fragment
+        android:id="@+id/currencyBreakdownFragment"
+        android:name="com.my.finmon.ui.breakdown.CurrencyBreakdownFragment"
+        android:label="@string/breakdown_title"
+        tools:layout="@layout/fragment_currency_breakdown" />
 
 </navigation>

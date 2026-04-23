@@ -36,4 +36,9 @@
     <string name="totals_card_label">Portfolio value</string>
     <string name="totals_invested_label">Invested: %1$s</string>
     <string name="totals_fx_gap_hint">Some FX rates missing — figures may be slightly off.</string>
+
+    <!-- Currency breakdown screen -->
+    <string name="breakdown_title">By currency</string>
+    <string name="breakdown_subtitle">Native-currency view — no FX conversion.</string>
+    <string name="breakdown_empty">No positions yet.</string>
 </resources>
