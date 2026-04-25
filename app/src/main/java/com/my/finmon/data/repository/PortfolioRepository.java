@@ -6,10 +6,12 @@ import androidx.annotation.Nullable;
 import com.my.finmon.data.dao.AssetDao;
 import com.my.finmon.data.dao.EventDao;
 import com.my.finmon.data.dao.ExchangeRateDao;
+import com.my.finmon.data.dao.PortfolioValueDao;
 import com.my.finmon.data.dao.StockPriceDao;
 import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.entity.EventEntity;
 import com.my.finmon.data.entity.ExchangeRateEntity;
+import com.my.finmon.data.entity.PortfolioValueSnapshotEntity;
 import com.my.finmon.data.entity.StockPriceEntity;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
@@ -23,6 +25,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.EnumMap;
 import java.util.List;
@@ -54,6 +58,7 @@ public final class PortfolioRepository {
     private final EventDao eventDao;
     private final StockPriceDao stockPriceDao;
     private final ExchangeRateDao exchangeRateDao;
+    private final PortfolioValueDao portfolioValueDao;
     private final ExecutorService executor;
 
     public PortfolioRepository(
@@ -61,11 +66,13 @@ public final class PortfolioRepository {
             @NonNull EventDao eventDao,
             @NonNull StockPriceDao stockPriceDao,
             @NonNull ExchangeRateDao exchangeRateDao,
+            @NonNull PortfolioValueDao portfolioValueDao,
             @NonNull ExecutorService executor) {
         this.assetDao = assetDao;
         this.eventDao = eventDao;
         this.stockPriceDao = stockPriceDao;
         this.exchangeRateDao = exchangeRateDao;
+        this.portfolioValueDao = portfolioValueDao;
         this.executor = executor;
     }
 
@@ -214,6 +221,146 @@ public final class PortfolioRepository {
         return executor.submit(() -> computeTotalsSync(asOf));
     }
 
+    /**
+     * Returns stored daily snapshots in {@code [from, to]}, ascending by date. The chart
+     * ViewModel appends a live right-edge point for today via {@link #getPortfolioTotals}.
+     */
+    @NonNull
+    public Future<List<PortfolioValueSnapshotEntity>> getSnapshots(
+            @NonNull LocalDate from, @NonNull LocalDate to) {
+        return executor.submit(() -> portfolioValueDao.getRange(from, to));
+    }
+
+    /**
+     * Per-lot P&amp;L rows for one currency, over the window {@code [windowStart, windowEnd]}.
+     * One row per original IN event (lot model #3): shows remaining qty plus realized +
+     * unrealized P&amp;L evaluated over the window.
+     *
+     * <p>Window semantics (option 2 — realized + mark-to-market):
+     * <ul>
+     *   <li>For a lot purchased <em>before</em> {@code windowStart}: baseline per-unit value
+     *       is the asset's price on {@code windowStart} (window-start mark). Realized =
+     *       Σ q × (sell_price − baseline) for sells in-window. Unrealized = remaining_qty ×
+     *       (end_price − baseline).</li>
+     *   <li>For a lot purchased <em>within</em> the window: baseline is the lot's own
+     *       purchase price. Realized = Σ q × (sell_price − purchase_price). Unrealized =
+     *       remaining_qty × (end_price − purchase_price). Matches "total P&amp;L since
+     *       purchase" for the All-time filter.</li>
+     * </ul>
+     * Lots fully closed before the window, with no activity in-window, are omitted.
+     *
+     * <p>Bond per-lot valuation uses {@link BondValuator} on a synthetic single-lot list
+     * (coupon attribution is ambiguous for multi-lot bonds; dev data has 1 lot per bond).
+     */
+    @NonNull
+    public Future<List<TradeRow>> getTradeRows(
+            @NonNull Currency currency,
+            @NonNull LocalDate windowStart,
+            @NonNull LocalDate windowEnd) {
+        return executor.submit(() -> computeTradeRowsSync(currency, windowStart, windowEnd));
+    }
+
+    private List<TradeRow> computeTradeRowsSync(
+            Currency currency, LocalDate windowStart, LocalDate windowEnd) {
+        LocalDateTime winEndDT = endOfDay(windowEnd);
+        List<TradeRow> out = new ArrayList<>();
+
+        for (AssetEntity asset : assetDao.getAll()) {
+            if (asset.currency != currency) continue;
+            if (asset.type == AssetType.CASH) continue;
+
+            List<EventEntity> events = eventDao.getByAssetAsOf(asset.id, winEndDT);
+            List<LotTimeline> lots = buildLotTimelines(events);
+
+            for (LotTimeline lot : lots) {
+                TradeRow row = computeRowForLot(asset, lot, windowStart, windowEnd);
+                if (row != null) out.add(row);
+            }
+        }
+
+        out.sort(Comparator.comparing((TradeRow r) -> r.purchasedAt));
+        return out;
+    }
+
+    @Nullable
+    private TradeRow computeRowForLot(
+            AssetEntity asset, LotTimeline lot, LocalDate windowStart, LocalDate windowEnd) {
+        LocalDateTime lotAcquiredAt = lot.inEvent.timestamp;
+        LocalDate lotDate = lotAcquiredAt.toLocalDate();
+        BigDecimal lotPrice = lot.inEvent.price;
+        BigDecimal origQty = lot.inEvent.amount;
+        boolean lotInWindow = !lotDate.isBefore(windowStart);
+
+        BigDecimal consumedBefore = BigDecimal.ZERO;
+        BigDecimal consumedInWindow = BigDecimal.ZERO;
+        for (Consumption c : lot.consumptions) {
+            if (c.consumedAt.toLocalDate().isBefore(windowStart)) {
+                consumedBefore = consumedBefore.add(c.qty);
+            } else {
+                consumedInWindow = consumedInWindow.add(c.qty);
+            }
+        }
+        BigDecimal remainingQtyE = origQty.subtract(consumedBefore).subtract(consumedInWindow);
+
+        // Skip: lot fully closed before window AND no sells in window AND lot not purchased in window.
+        if (remainingQtyE.signum() == 0 && consumedInWindow.signum() == 0 && !lotInWindow) {
+            return null;
+        }
+
+        // Baseline per-unit value — purchase price for in-window lots, window-start price otherwise.
+        BigDecimal baselineUnit = lotInWindow
+                ? lotPrice
+                : perUnitValueAt(asset, windowStart, lotAcquiredAt, origQty);
+        if (baselineUnit == null) {
+            // No price on-or-before window start (stock never synced that far back) — fall
+            // back to purchase price so the row degrades to total-since-purchase P&L rather
+            // than vanishing.
+            baselineUnit = lotPrice;
+        }
+
+        BigDecimal realized = BigDecimal.ZERO;
+        for (Consumption c : lot.consumptions) {
+            if (c.consumedAt.toLocalDate().isBefore(windowStart)) continue;
+            realized = realized.add(c.qty.multiply(c.sellPrice.subtract(baselineUnit)));
+        }
+
+        BigDecimal unrealized = BigDecimal.ZERO;
+        if (remainingQtyE.signum() > 0) {
+            BigDecimal endUnit = perUnitValueAt(asset, windowEnd, lotAcquiredAt, origQty);
+            if (endUnit != null) {
+                unrealized = remainingQtyE.multiply(endUnit.subtract(baselineUnit));
+            }
+        }
+
+        return new TradeRow(
+                asset.id, asset.ticker, asset.type, asset.currency,
+                lotAcquiredAt, origQty, remainingQtyE, lotPrice,
+                realized, unrealized, realized.add(unrealized));
+    }
+
+    /**
+     * Per-unit value of {@code asset} on {@code date}. STOCK uses the close on-or-before;
+     * BOND applies the coupon-bond formula on a synthetic single-lot ({@link BondValuator}).
+     * Returns null only when STOCK has no price on-or-before the date (never-synced ticker).
+     */
+    @Nullable
+    private BigDecimal perUnitValueAt(
+            AssetEntity asset, LocalDate date, LocalDateTime lotAcquiredAt, BigDecimal origQty) {
+        if (asset.type == AssetType.STOCK) {
+            StockPriceEntity q = stockPriceDao.findOnOrBefore(asset.ticker, date);
+            return q == null ? null : q.closePrice;
+        }
+        if (asset.type == AssetType.BOND) {
+            LocalDateTime asOf = endOfDay(date);
+            List<EventEntity> coupons = eventDao.getIncomeFromAssetAsOf(asset.id, asOf);
+            OpenLot synthetic = new OpenLot(origQty, BigDecimal.ZERO, lotAcquiredAt);
+            BigDecimal total = BondValuator.valueOf(
+                    asset, Collections.singletonList(synthetic), coupons, asOf);
+            return total.divide(origQty, MC);
+        }
+        return null;
+    }
+
     private PortfolioTotals computeTotalsSync(LocalDate asOf) {
         List<Holding> holdings = computeHoldingsSync(asOf);
         LocalDateTime upTo = endOfDay(asOf);
@@ -345,11 +492,13 @@ public final class PortfolioRepository {
             @NonNull List<OpenLot> openLots,
             @NonNull LocalDateTime upTo) {
         if (asset.type == AssetType.STOCK) {
-            StockPriceEntity latest = stockPriceDao.findMostRecent(asset.ticker);
-            if (latest == null) return null;
+            // Use the close on-or-before the as-of date so historical snapshots see
+            // historical prices (not today's price back-applied to every past day).
+            StockPriceEntity quote = stockPriceDao.findOnOrBefore(asset.ticker, upTo.toLocalDate());
+            if (quote == null) return null;
             BigDecimal totalQty = BigDecimal.ZERO;
             for (OpenLot lot : openLots) totalQty = totalQty.add(lot.qty);
-            return totalQty.multiply(latest.closePrice);
+            return totalQty.multiply(quote.closePrice);
         }
         if (asset.type == AssetType.BOND) {
             List<EventEntity> coupons = eventDao.getIncomeFromAssetAsOf(asset.id, upTo);
@@ -483,6 +632,65 @@ public final class PortfolioRepository {
         }
     }
 
+    /**
+     * Walks a chronologically-ordered event stream and records, per IN event, the FIFO
+     * consumption timeline (each OUT event's contribution — qty + sell price + timestamp).
+     * The {@link TradeRow} computation needs per-sell detail to split realized P&amp;L by
+     * window, which {@link #computeFifo} throws away.
+     */
+    static List<LotTimeline> buildLotTimelines(List<EventEntity> chronological) {
+        List<LotTimeline> all = new ArrayList<>();
+        Deque<MutableLotWithTimeline> queue = new ArrayDeque<>();
+
+        for (EventEntity e : chronological) {
+            if (e.type == EventType.IN) {
+                MutableLotWithTimeline lot = new MutableLotWithTimeline(e);
+                queue.addLast(lot);
+                all.add(new LotTimeline(e, lot.consumptions));
+            } else {
+                BigDecimal remaining = e.amount;
+                while (remaining.signum() > 0 && !queue.isEmpty()) {
+                    MutableLotWithTimeline head = queue.peekFirst();
+                    BigDecimal consume = head.remainingQty.min(remaining);
+                    head.consumptions.add(new Consumption(consume, e.price, e.timestamp));
+                    head.remainingQty = head.remainingQty.subtract(consume);
+                    remaining = remaining.subtract(consume);
+                    if (head.remainingQty.signum() == 0) queue.removeFirst();
+                }
+                // Over-sells beyond open lots are silently dropped, matching computeFifo.
+            }
+        }
+        return all;
+    }
+
+    private static final class MutableLotWithTimeline {
+        BigDecimal remainingQty;
+        final List<Consumption> consumptions = new ArrayList<>();
+        MutableLotWithTimeline(EventEntity inEvent) {
+            this.remainingQty = inEvent.amount;
+        }
+    }
+
+    static final class LotTimeline {
+        final EventEntity inEvent;
+        final List<Consumption> consumptions;
+        LotTimeline(EventEntity inEvent, List<Consumption> consumptions) {
+            this.inEvent = inEvent;
+            this.consumptions = consumptions;
+        }
+    }
+
+    static final class Consumption {
+        final BigDecimal qty;
+        final BigDecimal sellPrice;
+        final LocalDateTime consumedAt;
+        Consumption(BigDecimal qty, BigDecimal sellPrice, LocalDateTime consumedAt) {
+            this.qty = qty;
+            this.sellPrice = sellPrice;
+            this.consumedAt = consumedAt;
+        }
+    }
+
     // ─── DTOs ──────────────────────────────────────────────────────────────
 
     public static final class Holding {
@@ -529,6 +737,49 @@ public final class PortfolioRepository {
             this.realizedCostBasis = realizedCostBasis;
             this.realizedProceeds = realizedProceeds;
             this.openLots = openLots;
+        }
+    }
+
+    /**
+     * Per-lot P&amp;L row for the currency-breakdown screen (step 9). Evaluated over a
+     * window — see {@link #getTradeRows} for the realized/unrealized semantics.
+     */
+    public static final class TradeRow {
+        public final long assetId;
+        @NonNull public final String ticker;
+        @NonNull public final AssetType assetType;
+        @NonNull public final Currency currency;
+        @NonNull public final LocalDateTime purchasedAt;
+        @NonNull public final BigDecimal originalQty;
+        @NonNull public final BigDecimal remainingQty;
+        @NonNull public final BigDecimal purchasePrice;
+        @NonNull public final BigDecimal windowRealizedPnl;
+        @NonNull public final BigDecimal windowUnrealizedPnl;
+        @NonNull public final BigDecimal windowTotalPnl;
+
+        public TradeRow(
+                long assetId,
+                @NonNull String ticker,
+                @NonNull AssetType assetType,
+                @NonNull Currency currency,
+                @NonNull LocalDateTime purchasedAt,
+                @NonNull BigDecimal originalQty,
+                @NonNull BigDecimal remainingQty,
+                @NonNull BigDecimal purchasePrice,
+                @NonNull BigDecimal windowRealizedPnl,
+                @NonNull BigDecimal windowUnrealizedPnl,
+                @NonNull BigDecimal windowTotalPnl) {
+            this.assetId = assetId;
+            this.ticker = ticker;
+            this.assetType = assetType;
+            this.currency = currency;
+            this.purchasedAt = purchasedAt;
+            this.originalQty = originalQty;
+            this.remainingQty = remainingQty;
+            this.purchasePrice = purchasePrice;
+            this.windowRealizedPnl = windowRealizedPnl;
+            this.windowUnrealizedPnl = windowUnrealizedPnl;
+            this.windowTotalPnl = windowTotalPnl;
         }
     }
 

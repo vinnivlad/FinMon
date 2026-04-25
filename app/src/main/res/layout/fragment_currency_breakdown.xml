@@ -2,29 +2,69 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <TextView
-        android:id="@+id/subtitle"
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/periodChips"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/breakdown_subtitle"
-        android:textAppearance="?attr/textAppearanceBodySmall"
-        android:alpha="0.7"
         android:paddingHorizontal="16dp"
         android:paddingTop="12dp"
+        android:paddingBottom="4dp"
+        app:singleLine="true"
+        app:singleSelection="true"
+        app:selectionRequired="true"
         app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipAll"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/period_all"
+            android:checked="true" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipYtd"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/period_ytd" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip1m"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/period_1m" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip1y"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/period_1y" />
+
+    </com.google.android.material.chip.ChipGroup>
+
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/currencyTabs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:tabMode="fixed"
+        app:layout_constraintTop_toBottomOf="@id/periodChips"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/bucketList"
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/pager"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:clipToPadding="false"
-        android:paddingVertical="8dp"
-        app:layout_constraintTop_toBottomOf="@id/subtitle"
+        app:layout_constraintTop_toBottomOf="@id/currencyTabs"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -39,9 +79,10 @@
         android:textAlignment="center"
         android:padding="32dp"
         android:visibility="gone"
-        app:layout_constraintTop_toTopOf="@id/bucketList"
-        app:layout_constraintBottom_toBottomOf="@id/bucketList"
+        app:layout_constraintTop_toBottomOf="@id/currencyTabs"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="gone" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

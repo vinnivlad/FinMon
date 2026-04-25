@@ -26,7 +26,8 @@ public class MainActivity extends AppCompatActivity {
         NavController navController = navHost.getNavController();
 
         AppBarConfiguration appBarConfig = new AppBarConfiguration.Builder(
-                R.id.portfolioFragment
+                R.id.portfolioFragment,
+                R.id.chartFragment
         ).build();
 
         BottomNavigationView bottomNav = binding.bottomNav;

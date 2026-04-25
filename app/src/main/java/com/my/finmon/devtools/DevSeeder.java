@@ -6,13 +6,16 @@ import androidx.annotation.NonNull;
 
 import com.my.finmon.ServiceLocator;
 import com.my.finmon.data.dao.ExchangeRateDao;
+import com.my.finmon.data.dao.PortfolioValueDao;
 import com.my.finmon.data.dao.StockPriceDao;
 import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.entity.ExchangeRateEntity;
+import com.my.finmon.data.entity.PortfolioValueSnapshotEntity;
 import com.my.finmon.data.entity.StockPriceEntity;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.PortfolioRepository;
+import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
 import com.my.finmon.data.repository.PortfolioRepository.Side;
 
 import java.math.BigDecimal;
@@ -50,7 +53,8 @@ public final class DevSeeder {
                 seedBlocking(
                         sl.portfolioRepository(),
                         sl.database().stockPriceDao(),
-                        sl.database().exchangeRateDao());
+                        sl.database().exchangeRateDao(),
+                        sl.database().portfolioValueDao());
                 Log.i(TAG, "seeded dev fixtures");
             } catch (Exception e) {
                 Log.w(TAG, "dev seed failed", e);
@@ -61,7 +65,8 @@ public final class DevSeeder {
     private static void seedBlocking(
             @NonNull PortfolioRepository repo,
             @NonNull StockPriceDao stockPriceDao,
-            @NonNull ExchangeRateDao exchangeRateDao) throws Exception {
+            @NonNull ExchangeRateDao exchangeRateDao,
+            @NonNull PortfolioValueDao portfolioValueDao) throws Exception {
         LocalDate today = LocalDate.now();
 
         // ── Assets ──────────────────────────────────────────────────────────
@@ -78,17 +83,52 @@ public final class DevSeeder {
                 new BigDecimal("12"),
                 LocalDate.of(2028, 9, 15))).get();
 
-        // ── Cash deposits (t−100d), 10 days earlier than any trade ──────────
+        // ── Cash deposits ───────────────────────────────────────────────────
+        // t−100d: initial capital across all three currencies.
         LocalDateTime d100 = today.minusDays(100).atTime(LocalTime.NOON);
         repo.recordCashDeposit(Currency.USD, new BigDecimal("10000"), d100).get();
         repo.recordCashDeposit(Currency.EUR, new BigDecimal("8000"), d100).get();
         repo.recordCashDeposit(Currency.UAH, new BigDecimal("500000"), d100).get();
+        // t−65d: top-up USD. Two deposits give the chart a visible step in "Invested"
+        // and cover the larger VOO buys that follow.
+        repo.recordCashDeposit(Currency.USD, new BigDecimal("15000"),
+                today.minusDays(65).atTime(LocalTime.NOON)).get();
 
         // ── Trades, chronological ───────────────────────────────────────────
+        // Multiple VOO/SXR8 lots at different prices exercise per-lot P&L on the
+        // breakdown screen (step 9, lot model #3). Two sells exercise FIFO realized P&L.
+        //
+        // VOO lot ladder (stub price drifts 500→640 over 100d, so daysAgo×1.4 is the
+        // break-even price on that date):
+        //   t−80d  3 @ $528  — at-stub
+        //   t−60d  8 @ $540  — slightly below stub (~$556) — modest winner
+        //   t−45d 10 @ $500  — well below stub (~$577) — big winner (existing)
+        //   t−25d  4 @ $620  — above stub (~$605) — bought high, losing lot
+        //   t−15d  5 @ $520  — well below stub (~$619) — big winner (existing)
+        //   t−10d  SELL 6 @ $635  — FIFO eats t−80 (3) + 3 of t−60
+        //
+        // SXR8 lot ladder (stub 95→115 over 100d):
+        //   t−70d  5 @ €102  — slightly above stub (~€101) — losing lot
+        //   t−40d 15 @ €100  — below stub (~€107) — winner (existing)
+        //   t−20d 10 @ €115  — well above stub (~€111) — bought high, losing lot
+        //   t−5d   SELL 4 @ €114 — FIFO eats 4 of t−70 lot
+
         // Premium bond bought first so the coupon at t−30d has something to attach to.
         repo.recordStockTrade(Side.BUY, bond2Id,
                 new BigDecimal("50"), new BigDecimal("1050"),
                 today.minusDays(90).atTime(LocalTime.NOON)).get();
+
+        repo.recordStockTrade(Side.BUY, vooId,
+                new BigDecimal("3"), new BigDecimal("528"),
+                today.minusDays(80).atTime(LocalTime.NOON)).get();
+
+        repo.recordStockTrade(Side.BUY, sxr8Id,
+                new BigDecimal("5"), new BigDecimal("102"),
+                today.minusDays(70).atTime(LocalTime.NOON)).get();
+
+        repo.recordStockTrade(Side.BUY, vooId,
+                new BigDecimal("8"), new BigDecimal("540"),
+                today.minusDays(60).atTime(LocalTime.NOON)).get();
 
         repo.recordStockTrade(Side.BUY, bond1Id,
                 new BigDecimal("100"), new BigDecimal("990"),
@@ -107,8 +147,24 @@ public final class DevSeeder {
                 today.minusDays(30).atTime(LocalTime.NOON)).get();
 
         repo.recordStockTrade(Side.BUY, vooId,
+                new BigDecimal("4"), new BigDecimal("620"),
+                today.minusDays(25).atTime(LocalTime.NOON)).get();
+
+        repo.recordStockTrade(Side.BUY, sxr8Id,
+                new BigDecimal("10"), new BigDecimal("115"),
+                today.minusDays(20).atTime(LocalTime.NOON)).get();
+
+        repo.recordStockTrade(Side.BUY, vooId,
                 new BigDecimal("5"), new BigDecimal("520"),
                 today.minusDays(15).atTime(LocalTime.NOON)).get();
+
+        repo.recordStockTrade(Side.SELL, vooId,
+                new BigDecimal("6"), new BigDecimal("635"),
+                today.minusDays(10).atTime(LocalTime.NOON)).get();
+
+        repo.recordStockTrade(Side.SELL, sxr8Id,
+                new BigDecimal("4"), new BigDecimal("114"),
+                today.minusDays(5).atTime(LocalTime.NOON)).get();
 
         // Stub stock_price and exchange_rate data so the Totals card has something to
         // convert with on the first onResume. No Stooq / Frankfurter calls — this lets
@@ -116,6 +172,20 @@ public final class DevSeeder {
         // will still overwrite these with live data if it runs and succeeds.
         stockPriceDao.upsertAll(generateStubStockPrices(today));
         exchangeRateDao.upsertAll(generateStubFxRates(today));
+
+        // Seed daily portfolio snapshots by running real repo logic over the seeded data.
+        // Covers the same window as the trades so the chart has meaningful shape on launch.
+        LocalDate yesterday = today.minusDays(1);
+        for (LocalDate d = today.minusDays(HISTORY_DAYS); !d.isAfter(yesterday); d = d.plusDays(1)) {
+            PortfolioTotals t = repo.getPortfolioTotals(d).get();
+            PortfolioValueSnapshotEntity s = new PortfolioValueSnapshotEntity();
+            s.date = d;
+            s.baseCurrency = t.baseCurrency;
+            s.valueInBase = t.valueInBase;
+            s.investedInBase = t.investedInBase;
+            s.hasFxGaps = t.hasFxGaps;
+            portfolioValueDao.upsert(s);
+        }
     }
 
     // ─── Stub data generators ──────────────────────────────────────────────

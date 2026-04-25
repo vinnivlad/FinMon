@@ -41,4 +41,20 @@
     <string name="breakdown_title">By currency</string>
     <string name="breakdown_subtitle">Native-currency view — no FX conversion.</string>
     <string name="breakdown_empty">No positions yet.</string>
+    <string name="breakdown_page_empty">No trades in this currency for the selected period.</string>
+    <string name="period_all">All time</string>
+    <string name="period_ytd">YTD</string>
+    <string name="period_1m">1m</string>
+    <string name="period_1y">1y</string>
+    <string name="trade_row_ticker_line">%1$s · %2$s</string>
+    <string name="trade_row_qty_line_full">%1$s · %2$s @ %3$s</string>
+    <string name="trade_row_qty_line_partial">%1$s · %2$s @ %3$s · holding %4$s</string>
+    <string name="trade_row_breakdown">Realized %1$s · Unrealized %2$s</string>
+
+    <!-- Chart screen -->
+    <string name="chart_title">Chart</string>
+    <string name="chart_subtitle">Value vs. invested, in %1$s. Gap = market P&amp;L.</string>
+    <string name="chart_empty">No history yet — snapshots build up as the sync worker runs.</string>
+    <string name="chart_line_value">Value</string>
+    <string name="chart_line_invested">Invested</string>
 </resources>

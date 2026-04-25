@@ -34,4 +34,7 @@ public interface PortfolioValueDao {
     @Query("SELECT MAX(date) FROM portfolio_value")
     @Nullable
     LocalDate latestDate();
+
+    @Query("SELECT * FROM portfolio_value WHERE hasFxGaps = 1 AND date <= :upTo ORDER BY date ASC")
+    List<PortfolioValueSnapshotEntity> findGappyUpTo(LocalDate upTo);
 }

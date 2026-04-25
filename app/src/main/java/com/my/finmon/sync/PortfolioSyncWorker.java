@@ -14,11 +14,15 @@ import androidx.work.WorkerParameters;
 
 import com.my.finmon.ServiceLocator;
 import com.my.finmon.data.dao.ExchangeRateDao;
+import com.my.finmon.data.dao.PortfolioValueDao;
 import com.my.finmon.data.dao.StockPriceDao;
 import com.my.finmon.data.entity.AssetEntity;
+import com.my.finmon.data.entity.PortfolioValueSnapshotEntity;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.MarketDataRepository;
+import com.my.finmon.data.repository.PortfolioRepository;
+import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -56,6 +60,8 @@ public final class PortfolioSyncWorker extends Worker {
         try {
             syncStockPrices(sl, yesterday);
             syncFxRates(sl, yesterday);
+            // Snapshots depend on the freshly-synced price/FX tables, so run last.
+            syncPortfolioSnapshots(sl, yesterday);
             return Result.success();
         } catch (Exception e) {
             // Only structural failures land here — per-ticker errors are caught inside.
@@ -104,6 +110,49 @@ public final class PortfolioSyncWorker extends Worker {
         } catch (Exception e) {
             Log.w(TAG, "Frankfurter sync failed", e);
         }
+    }
+
+    private void syncPortfolioSnapshots(ServiceLocator sl, LocalDate yesterday) {
+        PortfolioValueDao snapDao = sl.database().portfolioValueDao();
+        PortfolioRepository repo = sl.portfolioRepository();
+
+        // 1) Walk latestSnapshot+1..yesterday and write a snapshot for each missing date.
+        LocalDate latest = snapDao.latestDate();
+        LocalDate from = (latest != null) ? latest.plusDays(1) : yesterday.minusDays(BOOTSTRAP_DAYS);
+        for (LocalDate d = from; !d.isAfter(yesterday); d = d.plusDays(1)) {
+            try {
+                PortfolioTotals t = repo.getPortfolioTotals(d).get();
+                snapDao.upsert(toSnapshot(d, t));
+            } catch (Exception e) {
+                // One bad day shouldn't stop the rest — log and continue.
+                Log.w(TAG, "snapshot failed for " + d, e);
+            }
+        }
+
+        // 2) Re-compute any existing gappy snapshots — FX backfill may have filled holes.
+        //    Only overwrite if the new snapshot is less gappy (clean) to avoid pointless churn.
+        List<PortfolioValueSnapshotEntity> gappy = snapDao.findGappyUpTo(yesterday);
+        for (PortfolioValueSnapshotEntity old : gappy) {
+            try {
+                PortfolioTotals t = repo.getPortfolioTotals(old.date).get();
+                if (!t.hasFxGaps) {
+                    snapDao.upsert(toSnapshot(old.date, t));
+                    Log.i(TAG, "snapshot un-gapped for " + old.date);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "snapshot re-compute failed for " + old.date, e);
+            }
+        }
+    }
+
+    private static PortfolioValueSnapshotEntity toSnapshot(LocalDate d, PortfolioTotals t) {
+        PortfolioValueSnapshotEntity s = new PortfolioValueSnapshotEntity();
+        s.date = d;
+        s.baseCurrency = t.baseCurrency;
+        s.valueInBase = t.valueInBase;
+        s.investedInBase = t.investedInBase;
+        s.hasFxGaps = t.hasFxGaps;
+        return s;
     }
 
     /**

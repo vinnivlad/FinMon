@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/bucketCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="8dp"
+        app:cardCornerRadius="12dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/bucketValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceHeadlineMedium"
+                tools:text="12,345.67 USD" />
+
+            <TextView
+                android:id="@+id/bucketInvested"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:alpha="0.8"
+                android:layout_marginTop="8dp"
+                tools:text="Invested: 10,000.00 USD" />
+
+            <TextView
+                android:id="@+id/bucketPnl"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textStyle="bold"
+                android:layout_marginTop="4dp"
+                tools:text="+2,345.67 USD (+23.5%)"
+                tools:textColor="@color/pnl_positive" />
+
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rowList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:paddingBottom="12dp"
+        app:layout_constraintTop_toBottomOf="@id/bucketCard"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/pageEmpty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/breakdown_page_empty"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:alpha="0.7"
+        android:textAlignment="center"
+        android:padding="32dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@id/rowList"
+        app:layout_constraintBottom_toBottomOf="@id/rowList"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

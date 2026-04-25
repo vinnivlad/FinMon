@@ -28,6 +28,12 @@ public interface StockPriceDao {
     @Nullable
     StockPriceEntity findMostRecent(String ticker);
 
+    @Query("SELECT * FROM stock_price "
+            + "WHERE ticker = :ticker AND date <= :onOrBefore "
+            + "ORDER BY date DESC LIMIT 1")
+    @Nullable
+    StockPriceEntity findOnOrBefore(String ticker, LocalDate onOrBefore);
+
     @Query("SELECT MAX(date) FROM stock_price WHERE ticker = :ticker")
     @Nullable
     LocalDate latestDate(String ticker);

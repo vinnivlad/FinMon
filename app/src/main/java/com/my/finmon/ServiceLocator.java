@@ -89,6 +89,7 @@ public final class ServiceLocator {
                 database.eventDao(),
                 database.stockPriceDao(),
                 database.exchangeRateDao(),
+                database.portfolioValueDao(),
                 ioExecutor);
 
         this.marketDataRepository = new MarketDataRepository(
