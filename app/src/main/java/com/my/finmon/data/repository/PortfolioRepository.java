@@ -163,6 +163,124 @@ public final class PortfolioRepository {
     }
 
     /**
+     * Ingests stock events fetched from a remote source (today: Yahoo). Idempotent:
+     * dedupes splits by (assetId, date) and dividends by (incomeSourceAssetId, date).
+     * Splits are processed first in chronological order so the FIFO walk used to compute
+     * held-quantity for each dividend already reflects them.
+     *
+     * <p>Per-share dividend amount is multiplied by the qty held on the ex-date (FIFO
+     * walk over events up to that date). If the user wasn't holding the stock on the
+     * ex-date, the dividend is skipped — that's correct, no income was actually paid.
+     *
+     * <p>Returns the count of new events written. Failures on individual entries log
+     * and continue — one bad row shouldn't block the rest.
+     */
+    @NonNull
+    public Future<Integer> ingestStockEvents(
+            long stockAssetId,
+            @NonNull List<DividendIngest> dividends,
+            @NonNull List<SplitIngest> splits) {
+        return executor.submit(() -> ingestStockEventsSync(stockAssetId, dividends, splits));
+    }
+
+    private int ingestStockEventsSync(
+            long stockAssetId, List<DividendIngest> dividends, List<SplitIngest> splits) {
+        AssetEntity stock = assetDao.findById(stockAssetId);
+        if (stock == null || stock.type != AssetType.STOCK) {
+            return 0;
+        }
+
+        int written = 0;
+
+        // 1) Splits first, chronological. Dividend qty calculation will see them.
+        List<SplitIngest> splitsSorted = new ArrayList<>(splits);
+        splitsSorted.sort(Comparator.comparing(s -> s.at));
+        for (SplitIngest s : splitsSorted) {
+            if (s.ratio == null || s.ratio.signum() <= 0) continue;
+            LocalDateTime startOfDay = s.at.toLocalDate().atStartOfDay();
+            LocalDateTime endExcl = startOfDay.plusDays(1);
+            if (eventDao.findSplitOnDate(stockAssetId, startOfDay, endExcl) != null) continue;
+
+            EventEntity ev = new EventEntity();
+            ev.timestamp = s.at;
+            ev.type = EventType.SPLIT;
+            ev.assetId = stockAssetId;
+            ev.amount = s.ratio;
+            ev.price = BigDecimal.ONE;  // unused for SPLIT
+            eventDao.insert(ev);
+            written++;
+        }
+
+        // 2) Dividends, chronological. Qty held = FIFO openQty as of ex-date end-of-day.
+        List<DividendIngest> divsSorted = new ArrayList<>(dividends);
+        divsSorted.sort(Comparator.comparing(d -> d.at));
+        for (DividendIngest d : divsSorted) {
+            if (d.perShareAmount == null || d.perShareAmount.signum() <= 0) continue;
+            LocalDateTime startOfDay = d.at.toLocalDate().atStartOfDay();
+            LocalDateTime endExcl = startOfDay.plusDays(1);
+            if (eventDao.findDividendOnDate(stockAssetId, startOfDay, endExcl) != null) continue;
+
+            // Qty held on ex-date — walk FIFO over events up to end-of-day, including any
+            // SPLIT events written above.
+            FifoResult fifo = computeFifo(eventDao.getByAssetAsOf(stockAssetId, endOfDay(d.at.toLocalDate())));
+            if (fifo.openQty.signum() <= 0) continue;  // we didn't hold the stock then
+
+            BigDecimal cash = fifo.openQty.multiply(d.perShareAmount);
+            writeCashEvent(stock.currency, EventType.DIVIDEND, cash, d.at, stockAssetId);
+            written++;
+        }
+
+        return written;
+    }
+
+    /**
+     * Auto-ingests bond coupon payments fetched from NBU's depository feed. Coupons
+     * dated in the past whose date isn't already represented in the event log get
+     * written as DIVIDEND events on the bond's currency cash pile (with
+     * {@code incomeSourceAssetId = bondAssetId}).
+     *
+     * <p>Cash amount = qty held on the coupon's pay-date × per-unit pay value. If the
+     * user wasn't holding the bond on that date, the row is skipped — correct, no
+     * income was actually paid.
+     *
+     * <p>Returns the count of new events written. Idempotent on re-run.
+     */
+    @NonNull
+    public Future<Integer> ingestBondCoupons(
+            long bondAssetId,
+            @NonNull List<DividendIngest> coupons) {
+        return executor.submit(() -> ingestBondCouponsSync(bondAssetId, coupons));
+    }
+
+    private int ingestBondCouponsSync(long bondAssetId, List<DividendIngest> coupons) {
+        AssetEntity bond = assetDao.findById(bondAssetId);
+        if (bond == null || bond.type != AssetType.BOND) return 0;
+
+        List<DividendIngest> sorted = new ArrayList<>(coupons);
+        sorted.sort(Comparator.comparing(c -> c.at));
+
+        int written = 0;
+        LocalDateTime now = LocalDateTime.now();
+        for (DividendIngest c : sorted) {
+            if (c.at.isAfter(now)) continue;  // future coupon — wait until it pays
+            if (c.perShareAmount == null || c.perShareAmount.signum() <= 0) continue;
+
+            LocalDateTime startOfDay = c.at.toLocalDate().atStartOfDay();
+            LocalDateTime endExcl = startOfDay.plusDays(1);
+            if (eventDao.findDividendOnDate(bondAssetId, startOfDay, endExcl) != null) continue;
+
+            FifoResult fifo = computeFifo(eventDao.getByAssetAsOf(
+                    bondAssetId, endOfDay(c.at.toLocalDate())));
+            if (fifo.openQty.signum() <= 0) continue;  // didn't hold the bond then
+
+            BigDecimal cash = fifo.openQty.multiply(c.perShareAmount);
+            writeCashEvent(bond.currency, EventType.DIVIDEND, cash, c.at, bondAssetId);
+            written++;
+        }
+        return written;
+    }
+
+    /**
      * Inserts the asset if no row exists with the same (ticker, currency); returns the id
      * of the existing or newly inserted row. The prototype's id is ignored.
      */
@@ -367,6 +485,9 @@ public final class PortfolioRepository {
 
         Map<Currency, BigDecimal> valueBucket = new EnumMap<>(Currency.class);
         Map<Currency, BigDecimal> investedBucket = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> dividendsBucket = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> realizedBucket = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> unrealizedBucket = new EnumMap<>(Currency.class);
 
         boolean hasFxGaps = false;
 
@@ -385,21 +506,26 @@ public final class PortfolioRepository {
             valueInBase = valueInBase.add(converted);
         }
 
-        // Invested: sum cash events that represent EXTERNAL capital flow — standalone
-        // deposits and withdrawals only. Trade legs (cash OUT on buy / cash IN on sell)
-        // share a timestamp with their paired stock/bond event and are filtered out;
-        // the money didn't leave the portfolio, it just changed form. Per-bucket stays
-        // native. Base conversion uses FX at the event's date, so FX moves after
-        // deposit are captured as market P&L.
+        // Invested + dividends per currency. One walk over each cash pile's events:
+        //   - DIVIDEND  → income (counted as P&L, not capital)
+        //   - paired with a non-cash event at same timestamp → trade leg, skip
+        //   - else → external capital deposit/withdrawal, signed by IN/OUT
         BigDecimal investedInBase = BigDecimal.ZERO;
         for (AssetEntity cashAsset : assetDao.findByType(AssetType.CASH)) {
-            BigDecimal bucket = BigDecimal.ZERO;
+            BigDecimal capital = BigDecimal.ZERO;
+            BigDecimal dividends = BigDecimal.ZERO;
             List<EventEntity> events = eventDao.getByAssetAsOf(cashAsset.id, upTo);
             for (EventEntity ev : events) {
-                if (ev.incomeSourceAssetId != null) continue;  // coupons/dividends are not capital
+                if (ev.type == EventType.DIVIDEND) {
+                    dividends = dividends.add(ev.amount);
+                    continue;
+                }
+                if (ev.incomeSourceAssetId != null) continue;  // legacy income rows, defensive
                 if (eventDao.countNonCashEventsAt(ev.timestamp) > 0) continue;  // trade leg
                 BigDecimal signed = (ev.type == EventType.IN) ? ev.amount : ev.amount.negate();
-                bucket = bucket.add(signed);
+                capital = capital.add(signed);
+                // Base-currency conversion uses FX at each deposit's own date so FX drift
+                // after the deposit shows up as market P&L (by design).
                 BigDecimal baseContribution = convert(
                         signed, cashAsset.currency, BASE_CURRENCY, ev.timestamp.toLocalDate());
                 if (baseContribution == null) {
@@ -408,15 +534,41 @@ public final class PortfolioRepository {
                     investedInBase = investedInBase.add(baseContribution);
                 }
             }
-            investedBucket.put(cashAsset.currency, bucket);
+            investedBucket.put(cashAsset.currency, capital);
+            dividendsBucket.put(cashAsset.currency, dividends);
         }
 
-        // Per-currency bucket P&L (no FX crossing).
+        // Realized + unrealized P&L per currency. Walks every non-cash asset once:
+        //   realized   = Σ (sell_proceeds − matched_lot_cost) over closed lots
+        //   unrealized = (current_market_value − open_cost_basis) over open lots
+        // Identity (per currency, no FX):  pnl = dividends + realized + unrealized.
+        for (AssetEntity asset : assetDao.getAll()) {
+            if (asset.type == AssetType.CASH) continue;
+            List<EventEntity> evs = eventDao.getByAssetAsOf(asset.id, upTo);
+            FifoResult fifo = computeFifo(evs);
+
+            BigDecimal realized = fifo.realizedProceeds.subtract(fifo.realizedCostBasis);
+            realizedBucket.merge(asset.currency, realized, BigDecimal::add);
+
+            if (fifo.openQty.signum() > 0) {
+                BigDecimal mv = computeMarketValue(asset, fifo.openLots, upTo);
+                if (mv != null) {
+                    unrealizedBucket.merge(
+                            asset.currency, mv.subtract(fifo.openCostBasis), BigDecimal::add);
+                }
+            }
+        }
+
+        // Per-currency bucket. {@code value - invested} stays the canonical P&L; the
+        // breakdown fields decompose it into dividends / realized / unrealized.
         Map<Currency, NativeBucket> bucketByCurrency = new EnumMap<>(Currency.class);
         for (Currency c : Currency.values()) {
             BigDecimal v = valueBucket.getOrDefault(c, BigDecimal.ZERO);
             BigDecimal i = investedBucket.getOrDefault(c, BigDecimal.ZERO);
-            bucketByCurrency.put(c, new NativeBucket(v, i, v.subtract(i)));
+            BigDecimal d = dividendsBucket.getOrDefault(c, BigDecimal.ZERO);
+            BigDecimal r = realizedBucket.getOrDefault(c, BigDecimal.ZERO);
+            BigDecimal u = unrealizedBucket.getOrDefault(c, BigDecimal.ZERO);
+            bucketByCurrency.put(c, new NativeBucket(v, i, v.subtract(i), d, r, u));
         }
 
         // Display ribbon — same baseValue re-expressed in each Currency.
@@ -540,7 +692,7 @@ public final class PortfolioRepository {
             throw new IllegalArgumentException(
                     "Asset " + sourceAssetId + " is " + source.type + ", expected " + expectedType);
         }
-        writeCashEvent(currency, EventType.IN, cashAmount, timestamp, sourceAssetId);
+        writeCashEvent(currency, EventType.DIVIDEND, cashAmount, timestamp, sourceAssetId);
     }
 
     private void writeCashEvent(
@@ -572,8 +724,13 @@ public final class PortfolioRepository {
     private static BigDecimal sumCashNet(List<EventEntity> events) {
         BigDecimal net = BigDecimal.ZERO;
         for (EventEntity e : events) {
-            if (e.type == EventType.IN) net = net.add(e.amount);
-            else net = net.subtract(e.amount);
+            // DIVIDEND on a cash pile is a positive inflow, same direction as IN.
+            if (e.type == EventType.IN || e.type == EventType.DIVIDEND) {
+                net = net.add(e.amount);
+            } else if (e.type == EventType.OUT) {
+                net = net.subtract(e.amount);
+            }
+            // SPLIT events never appear on cash assets — defensive ignore.
         }
         return net;
     }
@@ -596,7 +753,7 @@ public final class PortfolioRepository {
         for (EventEntity e : chronological) {
             if (e.type == EventType.IN) {
                 openMutable.addLast(new MutableLot(e.amount, e.price, e.timestamp));
-            } else {
+            } else if (e.type == EventType.OUT) {
                 BigDecimal remaining = e.amount;
                 realizedProceeds = realizedProceeds.add(e.amount.multiply(e.price));
                 while (remaining.signum() > 0 && !openMutable.isEmpty()) {
@@ -607,7 +764,22 @@ public final class PortfolioRepository {
                     remaining = remaining.subtract(consume);
                     if (lot.qty.signum() == 0) openMutable.removeFirst();
                 }
+            } else if (e.type == EventType.SPLIT) {
+                // Forward-only: scale all currently-open lots by the split ratio
+                // (e.amount = numerator/denominator). qty grows by ratio, per-unit price
+                // shrinks by the same ratio so cost basis stays fixed.
+                BigDecimal ratio = e.amount;
+                if (ratio.signum() <= 0) continue;
+                Deque<MutableLot> rebuilt = new ArrayDeque<>(openMutable.size());
+                for (MutableLot lot : openMutable) {
+                    BigDecimal newQty = lot.qty.multiply(ratio);
+                    BigDecimal newPrice = lot.price.divide(ratio, MC);
+                    rebuilt.addLast(new MutableLot(newQty, newPrice, lot.acquiredAt));
+                }
+                openMutable.clear();
+                openMutable.addAll(rebuilt);
             }
+            // DIVIDEND lives on the cash asset — never reaches FIFO walkers for stocks/bonds.
         }
 
         BigDecimal openQty = BigDecimal.ZERO;
@@ -647,7 +819,7 @@ public final class PortfolioRepository {
                 MutableLotWithTimeline lot = new MutableLotWithTimeline(e);
                 queue.addLast(lot);
                 all.add(new LotTimeline(e, lot.consumptions));
-            } else {
+            } else if (e.type == EventType.OUT) {
                 BigDecimal remaining = e.amount;
                 while (remaining.signum() > 0 && !queue.isEmpty()) {
                     MutableLotWithTimeline head = queue.peekFirst();
@@ -658,6 +830,15 @@ public final class PortfolioRepository {
                     if (head.remainingQty.signum() == 0) queue.removeFirst();
                 }
                 // Over-sells beyond open lots are silently dropped, matching computeFifo.
+            } else if (e.type == EventType.SPLIT) {
+                // Apply the split ratio to every still-open lot's remaining qty. The
+                // displayed "original qty" on TradeRow stays as the IN event's value —
+                // mildly misleading after a split, accepted per the forward-only call.
+                BigDecimal ratio = e.amount;
+                if (ratio.signum() <= 0) continue;
+                for (MutableLotWithTimeline q : queue) {
+                    q.remainingQty = q.remainingQty.multiply(ratio);
+                }
             }
         }
         return all;
@@ -783,6 +964,33 @@ public final class PortfolioRepository {
         }
     }
 
+    /**
+     * Input shape for {@link #ingestStockEvents}. {@code at} carries time-of-day so the
+     * idempotency dedup window is the calendar day, but the row keeps a usable timestamp
+     * (Yahoo gives epoch-second precision).
+     */
+    public static final class DividendIngest {
+        @NonNull public final LocalDateTime at;
+        /** Per-share cash amount in the stock's native currency. */
+        @NonNull public final BigDecimal perShareAmount;
+
+        public DividendIngest(@NonNull LocalDateTime at, @NonNull BigDecimal perShareAmount) {
+            this.at = at;
+            this.perShareAmount = perShareAmount;
+        }
+    }
+
+    public static final class SplitIngest {
+        @NonNull public final LocalDateTime at;
+        /** numerator / denominator. 4 for 4-for-1 forward; 0.25 for 1-for-4 reverse. */
+        @NonNull public final BigDecimal ratio;
+
+        public SplitIngest(@NonNull LocalDateTime at, @NonNull BigDecimal ratio) {
+            this.at = at;
+            this.ratio = ratio;
+        }
+    }
+
     /** Immutable snapshot of one open lot — what BondValuator needs per-lot. */
     public static final class OpenLot {
         @NonNull public final BigDecimal qty;
@@ -834,19 +1042,39 @@ public final class PortfolioRepository {
         }
     }
 
-    /** Native-currency bucket: market value, invested (net cash deposits), and P&amp;L — no FX. */
+    /**
+     * Native-currency bucket: market value, invested capital, total P&amp;L, plus a
+     * decomposition of P&amp;L into dividends + realized + unrealized.
+     *
+     * <p>Identity (no FX, single currency):  {@code pnl == dividends + realizedPnl + unrealizedPnl}.
+     * Holds exactly even for bonds: their accrued yield flows through {@code unrealizedPnl}
+     * (via {@code BondValuator}), and any coupons already paid flow through {@code dividends}
+     * — the BondValuator subtracts paid coupons from accrual so there's no double-counting.
+     */
     public static final class NativeBucket {
         @NonNull public final BigDecimal value;
         @NonNull public final BigDecimal invested;
         @NonNull public final BigDecimal pnl;
+        /** Dividends + bond coupons received in this currency. */
+        @NonNull public final BigDecimal dividends;
+        /** Realized P&amp;L from closed lots (sell_proceeds − matched_cost). */
+        @NonNull public final BigDecimal realizedPnl;
+        /** Unrealized P&amp;L on open positions (current_market_value − open_cost_basis). */
+        @NonNull public final BigDecimal unrealizedPnl;
 
         public NativeBucket(
                 @NonNull BigDecimal value,
                 @NonNull BigDecimal invested,
-                @NonNull BigDecimal pnl) {
+                @NonNull BigDecimal pnl,
+                @NonNull BigDecimal dividends,
+                @NonNull BigDecimal realizedPnl,
+                @NonNull BigDecimal unrealizedPnl) {
             this.value = value;
             this.invested = invested;
             this.pnl = pnl;
+            this.dividends = dividends;
+            this.realizedPnl = realizedPnl;
+            this.unrealizedPnl = unrealizedPnl;
         }
     }
 }

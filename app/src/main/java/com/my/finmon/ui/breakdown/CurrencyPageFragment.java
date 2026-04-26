@@ -108,6 +108,9 @@ public class CurrencyPageFragment extends Fragment {
             binding.bucketValue.setText("");
             binding.bucketInvested.setText("");
             binding.bucketPnl.setText("");
+            binding.bucketDividends.setText("");
+            binding.bucketRealized.setText("");
+            binding.bucketUnrealized.setText("");
             return;
         }
         String ccy = currency.name();
@@ -125,12 +128,23 @@ public class CurrencyPageFragment extends Fragment {
             pnlText = SIGNED_MONEY.format(nb.pnl) + " " + ccy;
         }
         binding.bucketPnl.setText(pnlText);
+        binding.bucketPnl.setTextColor(colorFor(nb.pnl.signum()));
 
-        int sign = nb.pnl.signum();
-        int color = sign > 0
+        bindBreakdownRow(binding.bucketDividends, nb.dividends, ccy);
+        bindBreakdownRow(binding.bucketRealized, nb.realizedPnl, ccy);
+        bindBreakdownRow(binding.bucketUnrealized, nb.unrealizedPnl, ccy);
+    }
+
+    private void bindBreakdownRow(@NonNull android.widget.TextView v, @NonNull BigDecimal amount, @NonNull String ccy) {
+        v.setText(SIGNED_MONEY.format(amount) + " " + ccy);
+        v.setTextColor(colorFor(amount.signum()));
+    }
+
+    private int colorFor(int sign) {
+        int resId = sign > 0
                 ? R.color.pnl_positive
                 : (sign < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
-        binding.bucketPnl.setTextColor(ContextCompat.getColor(requireContext(), color));
+        return ContextCompat.getColor(requireContext(), resId);
     }
 
     private static DecimalFormat buildFormat(@NonNull String pattern) {

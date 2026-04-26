@@ -42,4 +42,8 @@ public interface StockPriceDao {
             + "WHERE ticker = :ticker AND date >= :from AND date <= :to "
             + "ORDER BY date ASC")
     List<StockPriceEntity> getRange(String ticker, LocalDate from, LocalDate to);
+
+    /** Wipes the whole table — used by the JSON import flow. */
+    @Query("DELETE FROM stock_price")
+    void deleteAll();
 }

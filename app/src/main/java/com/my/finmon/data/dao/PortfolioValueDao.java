@@ -37,4 +37,8 @@ public interface PortfolioValueDao {
 
     @Query("SELECT * FROM portfolio_value WHERE hasFxGaps = 1 AND date <= :upTo ORDER BY date ASC")
     List<PortfolioValueSnapshotEntity> findGappyUpTo(LocalDate upTo);
+
+    /** Wipes the whole table — used by the JSON import flow. */
+    @Query("DELETE FROM portfolio_value")
+    void deleteAll();
 }

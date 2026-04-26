@@ -42,8 +42,16 @@ public final class DevSeeder {
 
     private DevSeeder() {}
 
-    /** Number of days of stub prices + FX to generate, ending at yesterday. */
+    /** Total span of historical fixtures (days). */
     private static final int HISTORY_DAYS = 100;
+
+    /**
+     * Stubs cover {@code HISTORY_DAYS..STUB_GAP_DAYS} ago. The most recent
+     * {@code STUB_GAP_DAYS} are deliberately left empty so the sync worker actually
+     * has work to do — useful for verifying Yahoo / Frankfurter wiring on dev launches.
+     * 60 days is wide enough to typically cover a quarterly VOO dividend.
+     */
+    private static final int STUB_GAP_DAYS = 60;
 
     private static final MathContext MC = new MathContext(12, RoundingMode.HALF_UP);
 
@@ -70,15 +78,17 @@ public final class DevSeeder {
         LocalDate today = LocalDate.now();
 
         // ── Assets ──────────────────────────────────────────────────────────
-        long vooId = repo.findOrCreateAsset(stock("VOO", Currency.USD, "voo.us")).get();
-        long sxr8Id = repo.findOrCreateAsset(stock("SXR8", Currency.EUR, "sxr8.de")).get();
+        long vooId = repo.findOrCreateAsset(
+                stock("VOO", Currency.USD, "VOO", "Vanguard S&P 500 ETF")).get();
+        long sxr8Id = repo.findOrCreateAsset(
+                stock("SXR8", Currency.EUR, "SXR8.DE", "iShares Core S&P 500 UCITS ETF")).get();
         long bond1Id = repo.findOrCreateAsset(bond(
-                "UA123456789_1",
+                "UA123456789_1", "OVDP UA 2029 (15%)",
                 new BigDecimal("1000"),
                 new BigDecimal("15"),
                 LocalDate.of(2029, 6, 15))).get();
         long bond2Id = repo.findOrCreateAsset(bond(
-                "UA987654321_1",
+                "UA987654321_1", "OVDP UA 2028 (12%)",
                 new BigDecimal("1000"),
                 new BigDecimal("12"),
                 LocalDate.of(2028, 9, 15))).get();
@@ -87,7 +97,8 @@ public final class DevSeeder {
         // t−100d: initial capital across all three currencies.
         LocalDateTime d100 = today.minusDays(100).atTime(LocalTime.NOON);
         repo.recordCashDeposit(Currency.USD, new BigDecimal("10000"), d100).get();
-        repo.recordCashDeposit(Currency.EUR, new BigDecimal("8000"), d100).get();
+        // Sized to comfortably cover SXR8 buys (~€17.3k of lots) with cash left over.
+        repo.recordCashDeposit(Currency.EUR, new BigDecimal("20000"), d100).get();
         repo.recordCashDeposit(Currency.UAH, new BigDecimal("500000"), d100).get();
         // t−65d: top-up USD. Two deposits give the chart a visible step in "Invested"
         // and cover the larger VOO buys that follow.
@@ -107,11 +118,11 @@ public final class DevSeeder {
         //   t−15d  5 @ $520  — well below stub (~$619) — big winner (existing)
         //   t−10d  SELL 6 @ $635  — FIFO eats t−80 (3) + 3 of t−60
         //
-        // SXR8 lot ladder (stub 95→115 over 100d):
-        //   t−70d  5 @ €102  — slightly above stub (~€101) — losing lot
-        //   t−40d 15 @ €100  — below stub (~€107) — winner (existing)
-        //   t−20d 10 @ €115  — well above stub (~€111) — bought high, losing lot
-        //   t−5d   SELL 4 @ €114 — FIFO eats 4 of t−70 lot
+        // SXR8 lot ladder (stub 540→600 over 100d, daysAgo×0.6 below €600):
+        //   t−70d  5 @ €555 — slightly below stub (~€558) — modest winner
+        //   t−40d 15 @ €570 — below stub (~€576) — winner (Yahoo era — actuals may differ)
+        //   t−20d 10 @ €595 — above stub (~€588) — bought high
+        //   t−5d   SELL 4 @ €598 — FIFO eats 4 of t−70 lot
 
         // Premium bond bought first so the coupon at t−30d has something to attach to.
         repo.recordStockTrade(Side.BUY, bond2Id,
@@ -123,7 +134,7 @@ public final class DevSeeder {
                 today.minusDays(80).atTime(LocalTime.NOON)).get();
 
         repo.recordStockTrade(Side.BUY, sxr8Id,
-                new BigDecimal("5"), new BigDecimal("102"),
+                new BigDecimal("5"), new BigDecimal("555"),
                 today.minusDays(70).atTime(LocalTime.NOON)).get();
 
         repo.recordStockTrade(Side.BUY, vooId,
@@ -139,7 +150,7 @@ public final class DevSeeder {
                 today.minusDays(45).atTime(LocalTime.NOON)).get();
 
         repo.recordStockTrade(Side.BUY, sxr8Id,
-                new BigDecimal("15"), new BigDecimal("100"),
+                new BigDecimal("15"), new BigDecimal("570"),
                 today.minusDays(40).atTime(LocalTime.NOON)).get();
 
         // Semi-annual coupon on bond2: 50 units × face 1000 × 12% ÷ 2 = 3,000 UAH.
@@ -151,7 +162,7 @@ public final class DevSeeder {
                 today.minusDays(25).atTime(LocalTime.NOON)).get();
 
         repo.recordStockTrade(Side.BUY, sxr8Id,
-                new BigDecimal("10"), new BigDecimal("115"),
+                new BigDecimal("10"), new BigDecimal("595"),
                 today.minusDays(20).atTime(LocalTime.NOON)).get();
 
         repo.recordStockTrade(Side.BUY, vooId,
@@ -163,20 +174,21 @@ public final class DevSeeder {
                 today.minusDays(10).atTime(LocalTime.NOON)).get();
 
         repo.recordStockTrade(Side.SELL, sxr8Id,
-                new BigDecimal("4"), new BigDecimal("114"),
+                new BigDecimal("4"), new BigDecimal("598"),
                 today.minusDays(5).atTime(LocalTime.NOON)).get();
 
         // Stub stock_price and exchange_rate data so the Totals card has something to
-        // convert with on the first onResume. No Stooq / Frankfurter calls — this lets
+        // convert with on the first onResume. No Yahoo / Frankfurter calls — this lets
         // the emulator run offline and keeps API quota for real use. Periodic sync worker
         // will still overwrite these with live data if it runs and succeeds.
         stockPriceDao.upsertAll(generateStubStockPrices(today));
         exchangeRateDao.upsertAll(generateStubFxRates(today));
 
-        // Seed daily portfolio snapshots by running real repo logic over the seeded data.
-        // Covers the same window as the trades so the chart has meaningful shape on launch.
-        LocalDate yesterday = today.minusDays(1);
-        for (LocalDate d = today.minusDays(HISTORY_DAYS); !d.isAfter(yesterday); d = d.plusDays(1)) {
+        // Seed daily portfolio snapshots over the stubbed window only. The remaining
+        // STUB_GAP_DAYS at the right edge are left for the sync worker to populate
+        // from real Yahoo / Frankfurter data.
+        LocalDate snapshotEnd = today.minusDays(STUB_GAP_DAYS);
+        for (LocalDate d = today.minusDays(HISTORY_DAYS); !d.isAfter(snapshotEnd); d = d.plusDays(1)) {
             PortfolioTotals t = repo.getPortfolioTotals(d).get();
             PortfolioValueSnapshotEntity s = new PortfolioValueSnapshotEntity();
             s.date = d;
@@ -192,24 +204,27 @@ public final class DevSeeder {
 
     @NonNull
     private static List<StockPriceEntity> generateStubStockPrices(@NonNull LocalDate today) {
-        List<StockPriceEntity> rows = new ArrayList<>(HISTORY_DAYS * 2);
-        for (int daysAgo = HISTORY_DAYS; daysAgo >= 1; daysAgo--) {
+        List<StockPriceEntity> rows = new ArrayList<>((HISTORY_DAYS - STUB_GAP_DAYS) * 2);
+        for (int daysAgo = HISTORY_DAYS; daysAgo >= STUB_GAP_DAYS; daysAgo--) {
             LocalDate d = today.minusDays(daysAgo);
-            // VOO: 500 (100d ago) → 640 (yesterday). Linear drift; noise unnecessary.
+            // VOO: 500 (100d ago) drifts up linearly. Stubs end at t-STUB_GAP_DAYS so
+            // Yahoo can fill the recent slice with real prices on first sync.
             rows.add(stockPrice("VOO", d, 640.0 - daysAgo * 1.4));
-            // SXR8: 95 → 115 over 100d.
-            rows.add(stockPrice("SXR8", d, 115.0 - daysAgo * 0.2));
+            // SXR8: 540 → 600 over 100d. Sized to plausible iShares S&P 500 UCITS levels
+            // so when Yahoo takes over after the gap, the price line stays continuous.
+            rows.add(stockPrice("SXR8", d, 600.0 - daysAgo * 0.6));
         }
         return rows;
     }
 
     @NonNull
     private static List<ExchangeRateEntity> generateStubFxRates(@NonNull LocalDate today) {
-        List<ExchangeRateEntity> rows = new ArrayList<>(HISTORY_DAYS * 6);
-        for (int daysAgo = HISTORY_DAYS; daysAgo >= 1; daysAgo--) {
+        List<ExchangeRateEntity> rows = new ArrayList<>((HISTORY_DAYS - STUB_GAP_DAYS) * 6);
+        for (int daysAgo = HISTORY_DAYS; daysAgo >= STUB_GAP_DAYS; daysAgo--) {
             LocalDate d = today.minusDays(daysAgo);
             // EUR/USD: 1.10 → 1.17 over 100d (USD slowly weakening).
             // EUR/UAH: 48 → 51 over 100d (UAH slowly weakening).
+            // Recent STUB_GAP_DAYS deliberately left for Frankfurter to fill.
             BigDecimal eurUsd = BigDecimal.valueOf(1.17 - daysAgo * 0.0007);
             BigDecimal eurUah = BigDecimal.valueOf(51.0 - daysAgo * 0.03);
             addAllSixPairs(rows, d, eurUsd, eurUah);
@@ -255,18 +270,24 @@ public final class DevSeeder {
     }
 
     @NonNull
-    private static AssetEntity stock(@NonNull String ticker, @NonNull Currency ccy, @NonNull String stooq) {
+    private static AssetEntity stock(
+            @NonNull String ticker,
+            @NonNull Currency ccy,
+            @NonNull String yahoo,
+            @NonNull String name) {
         AssetEntity a = new AssetEntity();
         a.ticker = ticker;
         a.currency = ccy;
         a.type = AssetType.STOCK;
-        a.stooqTicker = stooq;
+        a.remoteTicker = yahoo;
+        a.name = name;
         return a;
     }
 
     @NonNull
     private static AssetEntity bond(
             @NonNull String ticker,
+            @NonNull String name,
             @NonNull BigDecimal face,
             @NonNull BigDecimal yieldPct,
             @NonNull LocalDate maturity) {
@@ -274,10 +295,11 @@ public final class DevSeeder {
         a.ticker = ticker;
         a.currency = Currency.UAH;
         a.type = AssetType.BOND;
+        a.name = name;
         a.bondInitialPrice = face;
         a.bondYieldPct = yieldPct;
         a.bondMaturityDate = maturity;
-        // stooqTicker deliberately null — Ukrainian OVDPs aren't on Stooq.
+        // remoteTicker deliberately null — Ukrainian OVDPs aren't on Yahoo. NBU integration (Y4) covers them.
         return a;
     }
 }

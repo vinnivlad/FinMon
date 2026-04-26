@@ -51,15 +51,45 @@ public abstract class EventDao {
 
     /**
      * All income cash-ins attributable to a given source asset (bond coupons, stock
-     * dividends, etc.) up to the cutoff. Callers sum the {@code amount} fields in
-     * Java (BigDecimal) to avoid SQLite's numeric-coercion loss of precision.
+     * dividends) up to the cutoff. Callers sum the {@code amount} fields in Java
+     * (BigDecimal) to avoid SQLite's numeric-coercion loss of precision.
+     *
+     * <p>Filters on {@code type = 'DIVIDEND'} — both stock dividends and bond coupons
+     * use that type since 2026-04-26.
      */
     @Query("SELECT * FROM event "
             + "WHERE incomeSourceAssetId = :sourceAssetId "
-            + "AND type = 'IN' "
+            + "AND type = 'DIVIDEND' "
             + "AND timestamp <= :upTo "
             + "ORDER BY timestamp ASC, id ASC")
     public abstract List<EventEntity> getIncomeFromAssetAsOf(long sourceAssetId, LocalDateTime upTo);
+
+    /**
+     * Idempotency probe for auto-ingested dividends. Returns any DIVIDEND event from
+     * {@code sourceAssetId} dated within {@code [startOfDay, endOfDayExclusive)}.
+     * Used to skip re-creating an event the worker (or a manual entry) has already written.
+     */
+    @Query("SELECT * FROM event "
+            + "WHERE incomeSourceAssetId = :sourceAssetId "
+            + "AND type = 'DIVIDEND' "
+            + "AND timestamp >= :startOfDay AND timestamp < :endOfDayExclusive "
+            + "LIMIT 1")
+    @Nullable
+    public abstract EventEntity findDividendOnDate(
+            long sourceAssetId, LocalDateTime startOfDay, LocalDateTime endOfDayExclusive);
+
+    /**
+     * Idempotency probe for auto-ingested stock splits. A given asset has at most one
+     * split per day in practice; we dedup on (assetId, date).
+     */
+    @Query("SELECT * FROM event "
+            + "WHERE assetId = :assetId "
+            + "AND type = 'SPLIT' "
+            + "AND timestamp >= :startOfDay AND timestamp < :endOfDayExclusive "
+            + "LIMIT 1")
+    @Nullable
+    public abstract EventEntity findSplitOnDate(
+            long assetId, LocalDateTime startOfDay, LocalDateTime endOfDayExclusive);
 
     /**
      * Number of events at exactly {@code ts} whose asset is NOT cash. Used by the
@@ -71,4 +101,11 @@ public abstract class EventDao {
             + "INNER JOIN asset a ON e.assetId = a.id "
             + "WHERE e.timestamp = :ts AND a.type != 'CASH'")
     public abstract int countNonCashEventsAt(LocalDateTime ts);
+
+    @Query("SELECT * FROM event ORDER BY timestamp ASC, id ASC")
+    public abstract List<EventEntity> getAllChronological();
+
+    /** Wipes the whole table — used by the JSON import flow. */
+    @Query("DELETE FROM event")
+    public abstract void deleteAll();
 }

@@ -2,6 +2,10 @@ package com.my.finmon.ui.addasset;
 
 import android.app.DatePickerDialog;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -19,14 +23,28 @@ import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.databinding.FragmentAddAssetBinding;
+import com.my.finmon.ui.addtrade.AssetSuggestion;
+import com.my.finmon.ui.addtrade.AssetSuggestionAdapter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 public class AddAssetFragment extends Fragment {
 
+    /** Idle window before each keystroke triggers a Yahoo search. */
+    private static final long SEARCH_DEBOUNCE_MS = 300L;
+
     private FragmentAddAssetBinding binding;
     private AddAssetViewModel vm;
+
+    private AssetSuggestionAdapter assetAdapter;
+    @Nullable private AssetSuggestion pickedSuggestion;
+    private boolean suppressTickerWatcher;
+
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    @Nullable private Runnable pendingSearch;
 
     @Nullable private LocalDate selectedMaturity;
 
@@ -46,11 +64,15 @@ public class AddAssetFragment extends Fragment {
         setupCurrencyDropdown();
         setupTypeDropdown();
         setupMaturityPicker();
+        setupTickerAutocomplete();
 
         binding.saveButton.setOnClickListener(v -> onSaveClicked());
 
         vm = new ViewModelProvider(this, AddAssetViewModel.factory(requireContext()))
                 .get(AddAssetViewModel.class);
+
+        vm.suggestions().observe(getViewLifecycleOwner(), this::onSuggestionsLoaded);
+        vm.resolvedCurrency().observe(getViewLifecycleOwner(), this::onCurrencyResolved);
 
         vm.savedAssetId().observe(getViewLifecycleOwner(), id -> {
             // Success — pop back to portfolio; its onResume will refresh.
@@ -102,11 +124,120 @@ public class AddAssetFragment extends Fragment {
         });
     }
 
+    private void setupTickerAutocomplete() {
+        assetAdapter = new AssetSuggestionAdapter(
+                requireContext(),
+                android.R.layout.simple_list_item_1,
+                new ArrayList<>());
+        binding.ticker.setAdapter(assetAdapter);
+        binding.ticker.setThreshold(0);
+
+        binding.ticker.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus && assetAdapter.getCount() > 0) binding.ticker.showDropDown();
+        });
+        binding.ticker.setOnClickListener(v -> {
+            if (assetAdapter.getCount() > 0) binding.ticker.showDropDown();
+        });
+
+        binding.ticker.setOnItemClickListener((parent, v, position, id) -> {
+            AssetSuggestion picked = assetAdapter.getItem(position);
+            if (picked == null) return;
+            suppressTickerWatcher = true;
+            binding.ticker.setText(picked.ticker, /* filter */ false);
+            binding.ticker.setSelection(picked.ticker.length());
+            suppressTickerWatcher = false;
+            applyPick(picked);
+        });
+
+        binding.ticker.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (suppressTickerWatcher) return;
+                // Free typing invalidates any prior pick.
+                pickedSuggestion = null;
+            }
+            @Override public void afterTextChanged(Editable s) {
+                if (suppressTickerWatcher) return;
+                scheduleSearch(s.toString());
+            }
+        });
+    }
+
+    private void scheduleSearch(@NonNull String query) {
+        if (pendingSearch != null) mainHandler.removeCallbacks(pendingSearch);
+        pendingSearch = () -> {
+            pendingSearch = null;
+            if (vm != null) vm.search(query);
+        };
+        mainHandler.postDelayed(pendingSearch, SEARCH_DEBOUNCE_MS);
+    }
+
+    /**
+     * Auto-fills the rest of the form from a search pick. For Yahoo stocks, currency
+     * arrives async via {@link #onCurrencyResolved}. For NBU bonds, every field is
+     * known up-front including face, yield, and maturity.
+     */
+    private void applyPick(@NonNull AssetSuggestion picked) {
+        pickedSuggestion = picked;
+        binding.tickerLayout.setError(null);
+
+        if (picked.remoteTicker != null) {
+            binding.remoteTicker.setText(picked.remoteTicker);
+        } else {
+            binding.remoteTicker.setText("");
+        }
+        applyType(picked.type);
+
+        if (picked.knownCurrency != null) {
+            binding.currency.setText(picked.knownCurrency.name(), /* filter */ false);
+        } else if (picked.remoteTicker != null) {
+            // Yahoo stock — currency lands later via onCurrencyResolved.
+            binding.currency.setText("", false);
+            vm.lookupCurrency(picked.remoteTicker);
+        }
+
+        // Bond-specific auto-fill from NBU.
+        if (picked.source == AssetSuggestion.Source.REMOTE_BOND) {
+            if (picked.bondFace != null) {
+                binding.face.setText(picked.bondFace.toPlainString());
+            }
+            if (picked.bondYieldPct != null) {
+                binding.yield.setText(picked.bondYieldPct.toPlainString());
+            }
+            if (picked.bondMaturity != null) {
+                selectedMaturity = picked.bondMaturity;
+                binding.maturity.setText(picked.bondMaturity.toString());
+            }
+        }
+    }
+
+    private void applyType(@NonNull AssetType type) {
+        binding.type.setText(type.name(), /* filter */ false);
+        binding.bondFields.setVisibility(type == AssetType.BOND ? View.VISIBLE : View.GONE);
+    }
+
+    private void onSuggestionsLoaded(@Nullable List<AssetSuggestion> list) {
+        assetAdapter.clear();
+        if (list != null) assetAdapter.addAll(list);
+        assetAdapter.notifyDataSetChanged();
+        if (binding.ticker.isFocused() && assetAdapter.getCount() > 0) {
+            binding.ticker.showDropDown();
+        }
+    }
+
+    private void onCurrencyResolved(@Nullable Currency ccy) {
+        if (ccy == null || binding == null) return;
+        // Don't clobber whatever the user has manually typed in the meantime.
+        if (textOf(binding.currency).isEmpty()) {
+            binding.currency.setText(ccy.name(), /* filter */ false);
+        }
+    }
+
     private void onSaveClicked() {
         clearFieldErrors();
 
         String ticker = textOf(binding.ticker);
-        String stooqTicker = textOf(binding.stooqTicker);
+        String remoteTicker = textOf(binding.remoteTicker);
         String currencyStr = textOf(binding.currency);
         String typeStr = textOf(binding.type);
 
@@ -120,7 +251,13 @@ public class AddAssetFragment extends Fragment {
         proto.ticker = ticker;
         proto.currency = Currency.valueOf(currencyStr);
         proto.type = AssetType.valueOf(typeStr);
-        proto.stooqTicker = stooqTicker.isEmpty() ? null : stooqTicker;
+        proto.remoteTicker = remoteTicker.isEmpty() ? null : remoteTicker;
+        // Carry the human-readable name + ISIN from the autocomplete pick (if any).
+        // Manual entry leaves both null.
+        if (pickedSuggestion != null && pickedSuggestion.ticker.equalsIgnoreCase(ticker)) {
+            proto.name = pickedSuggestion.name;
+            proto.isin = pickedSuggestion.isin;
+        }
 
         if (proto.type == AssetType.BOND) {
             if (selectedMaturity == null) {
@@ -147,7 +284,7 @@ public class AddAssetFragment extends Fragment {
 
     private void clearFieldErrors() {
         binding.tickerLayout.setError(null);
-        binding.stooqTickerLayout.setError(null);
+        binding.remoteTickerLayout.setError(null);
         binding.currencyLayout.setError(null);
         binding.typeLayout.setError(null);
         binding.maturityLayout.setError(null);
@@ -161,6 +298,10 @@ public class AddAssetFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
+        if (pendingSearch != null) {
+            mainHandler.removeCallbacks(pendingSearch);
+            pendingSearch = null;
+        }
         super.onDestroyView();
         binding = null;
     }

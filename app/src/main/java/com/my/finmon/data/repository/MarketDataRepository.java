@@ -9,7 +9,11 @@ import com.my.finmon.data.entity.StockPriceEntity;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.remote.frankfurter.FrankfurterClient;
 import com.my.finmon.data.remote.frankfurter.FrankfurterRateDto;
-import com.my.finmon.data.remote.stooq.StooqClient;
+import com.my.finmon.data.remote.nbu.NbuBondDto;
+import com.my.finmon.data.remote.nbu.NbuClient;
+import com.my.finmon.data.remote.yahoo.YahooClient;
+import com.my.finmon.data.remote.yahoo.YahooClient.DailyAndEvents;
+import com.my.finmon.data.remote.yahoo.YahooClient.SearchHit;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -37,44 +41,111 @@ public final class MarketDataRepository {
     /** Enough significant digits for FX without producing recurring-decimal bloat. */
     private static final MathContext FX_MC = new MathContext(12, RoundingMode.HALF_UP);
 
-    private final StooqClient stooqClient;
+    private final YahooClient yahooClient;
     private final FrankfurterClient frankfurterClient;
+    private final NbuClient nbuClient;
     private final StockPriceDao stockPriceDao;
     private final ExchangeRateDao exchangeRateDao;
     private final ExecutorService executor;
 
     public MarketDataRepository(
-            @NonNull StooqClient stooqClient,
+            @NonNull YahooClient yahooClient,
             @NonNull FrankfurterClient frankfurterClient,
+            @NonNull NbuClient nbuClient,
             @NonNull StockPriceDao stockPriceDao,
             @NonNull ExchangeRateDao exchangeRateDao,
             @NonNull ExecutorService executor) {
-        this.stooqClient = stooqClient;
+        this.yahooClient = yahooClient;
         this.frankfurterClient = frankfurterClient;
+        this.nbuClient = nbuClient;
         this.stockPriceDao = stockPriceDao;
         this.exchangeRateDao = exchangeRateDao;
         this.executor = executor;
     }
 
     /**
-     * Fetches daily closes for {@code stooqTicker} (exchange-suffixed, e.g. {@code aapl.us})
-     * in [{@code from}, {@code to}] inclusive and upserts them into {@code stock_price}.
-     * Rows are keyed by {@code storageTicker} (the domain symbol, e.g. {@code AAPL}) so
-     * they line up with {@code asset.ticker}. Returns the number of rows written.
+     * Fetches daily closes from Yahoo for {@code remoteSymbol} (bare for US, exchange-suffixed
+     * for non-US — e.g. {@code VOO}, {@code SXR8.DE}) in [{@code from}, {@code to}] inclusive
+     * and upserts them into {@code stock_price}. Rows are keyed by {@code storageTicker} (the
+     * domain symbol, e.g. {@code VOO}) so they line up with {@code asset.ticker}. Returns the
+     * number of rows written.
      */
     @NonNull
     public Future<Integer> fetchAndStoreStockPrices(
-            @NonNull String stooqTicker,
+            @NonNull String remoteSymbol,
             @NonNull String storageTicker,
             @NonNull LocalDate from,
             @NonNull LocalDate to) {
         return executor.submit(() -> {
-            List<StockPriceEntity> rows = stooqClient.fetchDaily(stooqTicker, storageTicker, from, to);
+            List<StockPriceEntity> rows = yahooClient.fetchDaily(remoteSymbol, storageTicker, from, to);
             if (!rows.isEmpty()) {
                 stockPriceDao.upsertAll(rows);
             }
             return rows.size();
         });
+    }
+
+    /**
+     * Like {@link #fetchAndStoreStockPrices} but also pulls dividend + split events from
+     * the same Yahoo call. Prices are written here; events are returned to the caller —
+     * which is {@link com.my.finmon.sync.PortfolioSyncWorker}, since event ingestion is
+     * a domain operation that goes through {@code PortfolioRepository.ingestStockEvents}.
+     *
+     * <p>Caller is responsible for forwarding the returned events to the portfolio
+     * repository for idempotent writes.
+     */
+    @NonNull
+    public Future<DailyAndEvents> fetchAndStoreStockPricesWithEvents(
+            @NonNull String remoteSymbol,
+            @NonNull String storageTicker,
+            @NonNull LocalDate from,
+            @NonNull LocalDate to) {
+        return executor.submit(() -> {
+            DailyAndEvents result = yahooClient.fetchDailyAndEvents(remoteSymbol, storageTicker, from, to);
+            if (!result.prices.isEmpty()) {
+                stockPriceDao.upsertAll(result.prices);
+            }
+            return result;
+        });
+    }
+
+    /**
+     * Free-text symbol search. Yahoo's search results are pre-filtered to equities/ETFs
+     * and surface as {@link SearchHit} rows. No DB writes.
+     */
+    @NonNull
+    public Future<List<SearchHit>> searchSymbols(@NonNull String query) {
+        return executor.submit(() -> yahooClient.searchSymbols(query));
+    }
+
+    /**
+     * Looks up a security's reporting currency via Yahoo's chart meta. Yahoo search
+     * results don't include currency, so we resolve it on selection. Returns the raw
+     * ISO code (e.g. {@code "USD"}, {@code "EUR"}) — caller maps onto the app's
+     * {@code Currency} enum and rejects unsupported values.
+     */
+    @NonNull
+    public Future<String> lookupCurrency(@NonNull String remoteSymbol) {
+        return executor.submit(() -> yahooClient.lookupCurrency(remoteSymbol));
+    }
+
+    /**
+     * NBU bond search by ISIN / name / issuer substring. Hits a one-hour in-memory
+     * cache after the first call so autocomplete keystrokes don't re-fetch the full
+     * (~hundreds of bonds) listing.
+     */
+    @NonNull
+    public Future<List<NbuBondDto>> searchBonds(@NonNull String query) {
+        return executor.submit(() -> nbuClient.search(query));
+    }
+
+    /**
+     * Looks up a single bond by ISIN. Used by the sync worker to find the payment
+     * schedule of a held bond when ingesting past coupons.
+     */
+    @NonNull
+    public Future<NbuBondDto> findBondByIsin(@NonNull String isin) {
+        return executor.submit(() -> nbuClient.findByIsin(isin));
     }
 
     /**

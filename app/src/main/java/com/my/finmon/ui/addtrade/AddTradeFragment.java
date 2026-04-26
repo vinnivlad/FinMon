@@ -2,6 +2,10 @@ package com.my.finmon.ui.addtrade;
 
 import android.app.DatePickerDialog;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -15,7 +19,6 @@ import androidx.navigation.fragment.NavHostFragment;
 
 import com.google.android.material.snackbar.Snackbar;
 import com.my.finmon.R;
-import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.repository.PortfolioRepository.Side;
 import com.my.finmon.databinding.FragmentAddTradeBinding;
 
@@ -24,16 +27,25 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class AddTradeFragment extends Fragment {
+
+    /** Idle window before each keystroke triggers a Yahoo search. */
+    private static final long SEARCH_DEBOUNCE_MS = 300L;
 
     private FragmentAddTradeBinding binding;
     private AddTradeViewModel vm;
 
-    private final Map<String, AssetEntity> assetByLabel = new HashMap<>();
+    private AssetSuggestionAdapter assetAdapter;
+    @Nullable private AssetSuggestion pickedSuggestion;
+    /** Flag set while we programmatically rewrite the asset field after a pick, so the
+     *  TextWatcher doesn't react and clear {@link #pickedSuggestion}. */
+    private boolean suppressAssetTextWatcher;
+
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    @Nullable private Runnable pendingSearch;
+
     @Nullable private LocalDate selectedDate;
 
     @Nullable
@@ -51,13 +63,19 @@ public class AddTradeFragment extends Fragment {
 
         setupSideDropdown();
         setupDatePicker();
+        setupAssetAutocomplete();
 
         binding.saveButton.setOnClickListener(v -> onSaveClicked());
 
         vm = new ViewModelProvider(this, AddTradeViewModel.factory(requireContext()))
                 .get(AddTradeViewModel.class);
 
-        vm.assets().observe(getViewLifecycleOwner(), this::onAssetsLoaded);
+        vm.suggestions().observe(getViewLifecycleOwner(), this::onSuggestionsLoaded);
+
+        // The empty-assets hint is now a soft signal — the user can still type a Yahoo
+        // ticker to add a new one — so save stays enabled regardless.
+        vm.hasLocalAssets().observe(getViewLifecycleOwner(), has ->
+                binding.emptyAssetsHint.setVisibility(Boolean.TRUE.equals(has) ? View.GONE : View.VISIBLE));
 
         vm.saved().observe(getViewLifecycleOwner(), ok -> {
             if (Boolean.TRUE.equals(ok)) {
@@ -96,24 +114,70 @@ public class AddTradeFragment extends Fragment {
         });
     }
 
-    private void onAssetsLoaded(@Nullable List<AssetEntity> list) {
-        assetByLabel.clear();
-        boolean empty = (list == null || list.isEmpty());
-        binding.emptyAssetsHint.setVisibility(empty ? View.VISIBLE : View.GONE);
-        binding.saveButton.setEnabled(!empty);
-
-        if (empty) return;
-
-        List<String> labels = new ArrayList<>(list.size());
-        for (AssetEntity a : list) {
-            String label = a.ticker + " · " + a.currency.name() + " · " + a.type.name();
-            labels.add(label);
-            assetByLabel.put(label, a);
-        }
-        binding.asset.setAdapter(new ArrayAdapter<>(
+    private void setupAssetAutocomplete() {
+        // Passthrough-filter adapter; the ViewModel decides what shows, not AutoComplete's
+        // built-in prefix matcher.
+        assetAdapter = new AssetSuggestionAdapter(
                 requireContext(),
                 android.R.layout.simple_list_item_1,
-                labels));
+                new ArrayList<>());
+        binding.asset.setAdapter(assetAdapter);
+        binding.asset.setThreshold(0);  // dropdown shows at any text length, including empty
+
+        // Show the dropdown as soon as the field is focused or tapped — matches the
+        // "tap to browse" expectation users have for combobox-shaped controls.
+        binding.asset.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus && assetAdapter.getCount() > 0) binding.asset.showDropDown();
+        });
+        binding.asset.setOnClickListener(v -> {
+            if (assetAdapter.getCount() > 0) binding.asset.showDropDown();
+        });
+
+        binding.asset.setOnItemClickListener((parent, v, position, id) -> {
+            AssetSuggestion picked = assetAdapter.getItem(position);
+            if (picked == null) return;
+            // Show only the ticker in the field after selection — the full label is busy.
+            // Suppress TextWatcher: it would otherwise null out pickedSuggestion right back.
+            suppressAssetTextWatcher = true;
+            binding.asset.setText(picked.ticker, /* filter */ false);
+            binding.asset.setSelection(picked.ticker.length());
+            suppressAssetTextWatcher = false;
+            pickedSuggestion = picked;
+            binding.assetLayout.setError(null);
+        });
+
+        binding.asset.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (suppressAssetTextWatcher) return;
+                // Typing invalidates any prior selection — user has to re-pick.
+                pickedSuggestion = null;
+            }
+            @Override public void afterTextChanged(Editable s) {
+                if (suppressAssetTextWatcher) return;
+                scheduleSearch(s.toString());
+            }
+        });
+    }
+
+    private void scheduleSearch(@NonNull String query) {
+        if (pendingSearch != null) mainHandler.removeCallbacks(pendingSearch);
+        pendingSearch = () -> {
+            pendingSearch = null;
+            if (vm != null) vm.search(query);
+        };
+        mainHandler.postDelayed(pendingSearch, SEARCH_DEBOUNCE_MS);
+    }
+
+    private void onSuggestionsLoaded(@Nullable List<AssetSuggestion> list) {
+        assetAdapter.clear();
+        if (list != null) assetAdapter.addAll(list);
+        assetAdapter.notifyDataSetChanged();
+        // Re-show the dropdown after refresh — newly arrived Yahoo results are useless
+        // if the popup is collapsed and the user has to tap again to see them.
+        if (binding.asset.isFocused() && assetAdapter.getCount() > 0) {
+            binding.asset.showDropDown();
+        }
     }
 
     private void onSaveClicked() {
@@ -134,9 +198,9 @@ public class AddTradeFragment extends Fragment {
         }
         if (!ok) return;
 
-        AssetEntity asset = assetByLabel.get(assetStr);
-        if (asset == null) {
-            binding.assetLayout.setError(getString(R.string.error_required));
+        AssetSuggestion sel = pickedSuggestion;
+        if (sel == null || !sel.ticker.equalsIgnoreCase(assetStr)) {
+            binding.assetLayout.setError(getString(R.string.field_asset_pick_required));
             return;
         }
 
@@ -153,7 +217,7 @@ public class AddTradeFragment extends Fragment {
         LocalDateTime ts = LocalDateTime.of(selectedDate, LocalTime.NOON);
         Side side = Side.valueOf(sideStr);
 
-        vm.save(side, asset, qty, price, ts);
+        vm.save(side, sel, qty, price, ts);
     }
 
     private void clearFieldErrors() {
@@ -171,6 +235,10 @@ public class AddTradeFragment extends Fragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        if (pendingSearch != null) {
+            mainHandler.removeCallbacks(pendingSearch);
+            pendingSearch = null;
+        }
         binding = null;
     }
 }

@@ -20,32 +20,32 @@
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/tickerLayout"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
             android:hint="@string/field_ticker"
             app:helperText="@string/field_ticker_hint">
 
-            <com.google.android.material.textfield.TextInputEditText
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
                 android:id="@+id/ticker"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textCapCharacters|text"
-                android:imeOptions="actionNext" />
+                android:imeOptions="actionNext"
+                android:inputType="textCapCharacters|textNoSuggestions" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/stooqTickerLayout"
+            android:id="@+id/remoteTickerLayout"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
-            android:hint="@string/field_stooq_ticker"
-            app:helperText="@string/field_stooq_ticker_hint">
+            android:hint="@string/field_remote_ticker"
+            app:helperText="@string/field_remote_ticker_hint">
 
             <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/stooqTicker"
+                android:id="@+id/remoteTicker"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="text"

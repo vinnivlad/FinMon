@@ -7,6 +7,7 @@ import androidx.annotation.NonNull;
 import androidx.work.Constraints;
 import androidx.work.ExistingPeriodicWorkPolicy;
 import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 import androidx.work.Worker;
@@ -20,9 +21,19 @@ import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.entity.PortfolioValueSnapshotEntity;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
+import com.my.finmon.data.remote.nbu.NbuBondDto;
+import com.my.finmon.data.remote.yahoo.YahooClient;
+import com.my.finmon.data.remote.yahoo.YahooClient.DailyAndEvents;
 import com.my.finmon.data.repository.MarketDataRepository;
 import com.my.finmon.data.repository.PortfolioRepository;
+import com.my.finmon.data.repository.PortfolioRepository.DividendIngest;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
+import com.my.finmon.data.repository.PortfolioRepository.SplitIngest;
+
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+
+import java.util.ArrayList;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -60,7 +71,8 @@ public final class PortfolioSyncWorker extends Worker {
         try {
             syncStockPrices(sl, yesterday);
             syncFxRates(sl, yesterday);
-            // Snapshots depend on the freshly-synced price/FX tables, so run last.
+            syncBondCoupons(sl);
+            // Snapshots depend on the freshly-synced price/FX/coupon tables, so run last.
             syncPortfolioSnapshots(sl, yesterday);
             return Result.success();
         } catch (Exception e) {
@@ -73,10 +85,11 @@ public final class PortfolioSyncWorker extends Worker {
     private void syncStockPrices(ServiceLocator sl, LocalDate yesterday) {
         StockPriceDao priceDao = sl.database().stockPriceDao();
         MarketDataRepository md = sl.marketDataRepository();
+        PortfolioRepository portfolio = sl.portfolioRepository();
         List<AssetEntity> stocks = sl.database().assetDao().findByType(AssetType.STOCK);
 
         for (AssetEntity stock : stocks) {
-            if (stock.stooqTicker == null || stock.stooqTicker.isBlank()) {
+            if (stock.remoteTicker == null || stock.remoteTicker.isBlank()) {
                 // Manual-price or unsupported-exchange asset — no remote sync for it.
                 continue;
             }
@@ -85,13 +98,31 @@ public final class PortfolioSyncWorker extends Worker {
             if (from.isAfter(yesterday)) continue;
 
             try {
-                Integer rows = md.fetchAndStoreStockPrices(
-                        stock.stooqTicker, stock.ticker, from, yesterday).get();
-                Log.i(TAG, "Stooq " + stock.stooqTicker + " " + from + "→" + yesterday + ": " + rows + " rows");
+                // One Yahoo round-trip pulls candles + dividends + splits.
+                DailyAndEvents result = md.fetchAndStoreStockPricesWithEvents(
+                        stock.remoteTicker, stock.ticker, from, yesterday).get();
+                Log.i(TAG, "Yahoo " + stock.remoteTicker + " " + from + "→" + yesterday + ": "
+                        + result.prices.size() + " prices, "
+                        + result.dividends.size() + " divs, "
+                        + result.splits.size() + " splits");
+
+                // Forward events to the portfolio repo for idempotent ingestion.
+                List<DividendIngest> divs = new ArrayList<>(result.dividends.size());
+                for (YahooClient.DividendEvent d : result.dividends) {
+                    divs.add(new DividendIngest(d.at, d.perShareAmount));
+                }
+                List<SplitIngest> splits = new ArrayList<>(result.splits.size());
+                for (YahooClient.SplitEvent s : result.splits) {
+                    splits.add(new SplitIngest(s.at, s.ratio));
+                }
+                if (!divs.isEmpty() || !splits.isEmpty()) {
+                    Integer written = portfolio.ingestStockEvents(stock.id, divs, splits).get();
+                    Log.i(TAG, "ingested " + written + " events for " + stock.ticker);
+                }
             } catch (Exception e) {
-                // Stooq "No data" returns 0 rows cleanly — this catches IOException, API-key
-                // rejection, parse errors, and DB failures. Log and continue to the next ticker.
-                Log.w(TAG, "Stooq sync failed for " + stock.ticker, e);
+                // Yahoo "no data" returns empty cleanly — this catches IOException,
+                // parse errors, and DB failures. Log and continue to the next ticker.
+                Log.w(TAG, "Yahoo sync failed for " + stock.ticker, e);
             }
         }
     }
@@ -109,6 +140,49 @@ public final class PortfolioSyncWorker extends Worker {
             Log.i(TAG, "Frankfurter " + from + "→" + yesterday + ": " + rows + " rows");
         } catch (Exception e) {
             Log.w(TAG, "Frankfurter sync failed", e);
+        }
+    }
+
+    /**
+     * For every held BOND with a non-null ISIN, look up its NBU payment schedule and
+     * ingest any past coupon payments not already in the event log. Bonds with no
+     * ISIN (manually entered, or matured and dropped from NBU's listing) are skipped.
+     */
+    private void syncBondCoupons(ServiceLocator sl) {
+        MarketDataRepository md = sl.marketDataRepository();
+        PortfolioRepository portfolio = sl.portfolioRepository();
+        List<AssetEntity> bonds = sl.database().assetDao().findByType(AssetType.BOND);
+
+        for (AssetEntity bond : bonds) {
+            if (bond.isin == null || bond.isin.isBlank()) continue;
+            try {
+                NbuBondDto dto = md.findBondByIsin(bond.isin).get();
+                if (dto == null || dto.payments == null) {
+                    Log.i(TAG, "NBU has no schedule for " + bond.isin);
+                    continue;
+                }
+                List<DividendIngest> coupons = new ArrayList<>();
+                for (NbuBondDto.Payment p : dto.payments) {
+                    if (p == null || !"1".equals(p.pay_type)) continue;  // only coupons
+                    if (p.pay_date == null || p.pay_val == null) continue;
+                    LocalDate d;
+                    try {
+                        d = LocalDate.parse(p.pay_date);
+                    } catch (Exception ex) {
+                        continue;
+                    }
+                    // Stamp at 09:00 so coupon timestamps don't collide with same-day
+                    // user-entered noon trades — keeps trade-leg detection unconfused.
+                    LocalDateTime at = LocalDateTime.of(d, LocalTime.of(9, 0));
+                    coupons.add(new DividendIngest(at,
+                            new java.math.BigDecimal(p.pay_val.toString())));
+                }
+                if (coupons.isEmpty()) continue;
+                Integer written = portfolio.ingestBondCoupons(bond.id, coupons).get();
+                Log.i(TAG, "NBU " + bond.isin + ": ingested " + written + " coupons");
+            } catch (Exception e) {
+                Log.w(TAG, "NBU coupon sync failed for " + bond.ticker, e);
+            }
         }
     }
 
@@ -173,5 +247,22 @@ public final class PortfolioSyncWorker extends Worker {
                 UNIQUE_NAME,
                 ExistingPeriodicWorkPolicy.KEEP,
                 req);
+    }
+
+    /**
+     * Fires the worker once, immediately (subject to network constraint). Used in DEBUG
+     * builds to demonstrate Yahoo / Frankfurter wiring without waiting 12h for the
+     * periodic schedule's first run.
+     */
+    public static void runOnce(@NonNull Context ctx) {
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build();
+
+        OneTimeWorkRequest req = new OneTimeWorkRequest.Builder(PortfolioSyncWorker.class)
+                .setConstraints(constraints)
+                .build();
+
+        WorkManager.getInstance(ctx).enqueue(req);
     }
 }

@@ -7,16 +7,24 @@ import androidx.annotation.NonNull;
 import com.my.finmon.data.FinMonDatabase;
 import com.my.finmon.data.remote.frankfurter.FrankfurterClient;
 import com.my.finmon.data.remote.frankfurter.FrankfurterService;
-import com.my.finmon.data.remote.stooq.StooqClient;
+import com.my.finmon.data.remote.nbu.NbuClient;
+import com.my.finmon.data.remote.nbu.NbuService;
+import com.my.finmon.data.remote.yahoo.YahooClient;
+import com.my.finmon.data.remote.yahoo.YahooService;
+import com.my.finmon.data.repository.ImportExportRepository;
 import com.my.finmon.data.repository.MarketDataRepository;
 import com.my.finmon.data.repository.PortfolioRepository;
 import com.squareup.moshi.Moshi;
 
+import java.io.IOException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
 import retrofit2.converter.moshi.MoshiConverterFactory;
@@ -34,6 +42,15 @@ import retrofit2.converter.moshi.MoshiConverterFactory;
 public final class ServiceLocator {
 
     private static final String FRANKFURTER_BASE_URL = "https://api.frankfurter.dev/";
+    private static final String YAHOO_BASE_URL = "https://query1.finance.yahoo.com/";
+    private static final String NBU_BASE_URL = "https://bank.gov.ua/";
+
+    /**
+     * Yahoo's chart endpoint silently rejects requests with a missing or default UA. Any
+     * non-empty browser-shaped string works; we don't impersonate to avoid policy issues,
+     * just identify ourselves.
+     */
+    private static final String USER_AGENT = "FinMon-Android/1.0";
 
     private static volatile ServiceLocator INSTANCE;
 
@@ -43,6 +60,7 @@ public final class ServiceLocator {
     private final OkHttpClient httpClient;
     private final PortfolioRepository portfolioRepository;
     private final MarketDataRepository marketDataRepository;
+    private final ImportExportRepository importExportRepository;
 
     private ServiceLocator(@NonNull Context appContext) {
         this.database = FinMonDatabase.get(appContext);
@@ -70,6 +88,7 @@ public final class ServiceLocator {
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
+                .addInterceptor(new UserAgentInterceptor(USER_AGENT))
                 .addInterceptor(logging)
                 .build();
 
@@ -82,7 +101,21 @@ public final class ServiceLocator {
         FrankfurterService frankfurterService = frankfurterRetrofit.create(FrankfurterService.class);
         FrankfurterClient frankfurterClient = new FrankfurterClient(frankfurterService);
 
-        StooqClient stooqClient = new StooqClient(httpClient, BuildConfig.STOOQ_API_KEY);
+        Retrofit yahooRetrofit = new Retrofit.Builder()
+                .baseUrl(YAHOO_BASE_URL)
+                .client(httpClient)
+                .addConverterFactory(MoshiConverterFactory.create(moshi))
+                .build();
+        YahooService yahooService = yahooRetrofit.create(YahooService.class);
+        YahooClient yahooClient = new YahooClient(yahooService);
+
+        Retrofit nbuRetrofit = new Retrofit.Builder()
+                .baseUrl(NBU_BASE_URL)
+                .client(httpClient)
+                .addConverterFactory(MoshiConverterFactory.create(moshi))
+                .build();
+        NbuService nbuService = nbuRetrofit.create(NbuService.class);
+        NbuClient nbuClient = new NbuClient(nbuService);
 
         this.portfolioRepository = new PortfolioRepository(
                 database.assetDao(),
@@ -93,11 +126,38 @@ public final class ServiceLocator {
                 ioExecutor);
 
         this.marketDataRepository = new MarketDataRepository(
-                stooqClient,
+                yahooClient,
                 frankfurterClient,
+                nbuClient,
                 database.stockPriceDao(),
                 database.exchangeRateDao(),
                 ioExecutor);
+
+        this.importExportRepository = new ImportExportRepository(
+                database,
+                database.assetDao(),
+                database.eventDao(),
+                database.stockPriceDao(),
+                database.exchangeRateDao(),
+                database.portfolioValueDao(),
+                portfolioRepository,
+                marketDataRepository,
+                viewExecutor,
+                moshi);
+    }
+
+    /** Sets a constant User-Agent on every outgoing request. Yahoo requires non-empty UA. */
+    private static final class UserAgentInterceptor implements Interceptor {
+        private final String userAgent;
+        UserAgentInterceptor(@NonNull String userAgent) { this.userAgent = userAgent; }
+
+        @NonNull
+        @Override
+        public Response intercept(@NonNull Chain chain) throws IOException {
+            Request original = chain.request();
+            if (original.header("User-Agent") != null) return chain.proceed(original);
+            return chain.proceed(original.newBuilder().header("User-Agent", userAgent).build());
+        }
     }
 
     @NonNull
@@ -120,4 +180,5 @@ public final class ServiceLocator {
     @NonNull public ExecutorService viewExecutor() { return viewExecutor; }
     @NonNull public PortfolioRepository portfolioRepository() { return portfolioRepository; }
     @NonNull public MarketDataRepository marketDataRepository() { return marketDataRepository; }
+    @NonNull public ImportExportRepository importExportRepository() { return importExportRepository; }
 }

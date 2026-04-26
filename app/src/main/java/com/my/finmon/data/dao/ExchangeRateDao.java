@@ -53,4 +53,8 @@ public interface ExchangeRateDao {
             + "AND date >= :from AND date <= :to "
             + "ORDER BY date ASC")
     List<ExchangeRateEntity> getRange(Currency src, Currency tgt, LocalDate from, LocalDate to);
+
+    /** Wipes the whole table — used by the JSON import flow. */
+    @Query("DELETE FROM exchange_rate")
+    void deleteAll();
 }

@@ -33,17 +33,34 @@ public class AssetEntity {
     public AssetType type;
 
     /**
-     * Exchange-suffixed ticker understood by Stooq (e.g. {@code aapl.us}, {@code vwce.de}).
-     * Null for assets Stooq can't price — CASH piles, Ukrainian OVDPs (no {@code .ua}
-     * coverage), or any manual-price instrument. The sync worker silently skips rows
-     * where this is null.
+     * Symbol understood by the active remote price source. Today that's Yahoo:
+     * bare for US-listed (e.g. {@code VOO}), exchange-suffixed for non-US (e.g.
+     * {@code SXR8.DE}). Null for assets the remote source can't price — CASH piles,
+     * Ukrainian OVDPs (UA bonds aren't on Yahoo), or any manual-price instrument.
+     * The sync worker silently skips rows where this is null.
      *
-     * Kept separate from {@link #ticker} so the domain symbol ("AAPL") stays clean and we
-     * don't couple the schema to one remote source. If we later swap Stooq, only this
-     * column (and the Stooq fetch path) changes.
+     * Kept separate from {@link #ticker} so the domain symbol ("VOO") stays clean and
+     * we don't couple the schema to one remote source. Renamed from {@code stooqTicker}
+     * when the price source moved to Yahoo (2026-04-26).
      */
     @Nullable
-    public String stooqTicker;
+    public String remoteTicker;
+
+    /**
+     * Human-readable label populated when an asset is added via the trade-form's
+     * autocomplete (Yahoo's {@code longname}/{@code shortname}, or NBU's bond name).
+     * Optional — assets created manually leave this null.
+     */
+    @Nullable
+    public String name;
+
+    /**
+     * ISIN — set for UA OVDPs added via the NBU autocomplete (Y4). Drives matching
+     * against NBU's {@code depo_securities} feed for coupon-schedule auto-ingest.
+     * Null for assets that don't have one (stocks use {@link #remoteTicker} instead).
+     */
+    @Nullable
+    public String isin;
 
     @Nullable
     public LocalDate bondMaturityDate;

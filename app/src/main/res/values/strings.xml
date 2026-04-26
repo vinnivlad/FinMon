@@ -7,13 +7,20 @@
     <string name="fab_add">Add</string>
     <string name="menu_add_asset">Add asset</string>
     <string name="menu_record_trade">Record trade</string>
+    <string name="menu_export_data">Export data</string>
+    <string name="menu_import_data">Import data</string>
+    <string name="export_default_filename">finmon-export-%1$s.json</string>
+    <string name="export_success">Exported %1$d assets and %2$d events</string>
+    <string name="import_success">Imported %1$d assets, %2$d events; enriched %3$d</string>
+    <string name="import_failed">Import failed: %1$s</string>
+    <string name="export_failed">Export failed: %1$s</string>
 
     <!-- Add asset screen -->
     <string name="add_asset_title">Add asset</string>
     <string name="field_ticker">Ticker</string>
-    <string name="field_ticker_hint">e.g. AAPL, VWCE, OVDP-2029-06</string>
-    <string name="field_stooq_ticker">Stooq ticker (optional)</string>
-    <string name="field_stooq_ticker_hint">e.g. aapl.us — leave blank if not on Stooq (bonds, UAH assets)</string>
+    <string name="field_ticker_hint">Type to search Yahoo (AAPL, VWCE…) or just type a custom ticker for non-Yahoo assets</string>
+    <string name="field_remote_ticker">Yahoo ticker (optional)</string>
+    <string name="field_remote_ticker_hint">e.g. AAPL or SXR8.DE — leave blank if not on Yahoo (UA bonds, manual-price)</string>
     <string name="field_currency">Currency</string>
     <string name="field_type">Type</string>
     <string name="field_bond_maturity">Maturity date</string>
@@ -26,6 +33,8 @@
     <string name="add_trade_title">Record trade</string>
     <string name="field_side">Side</string>
     <string name="field_asset">Asset</string>
+    <string name="field_asset_hint">Type a ticker (VOO, SXR8, AAPL…) — Yahoo searches as you type</string>
+    <string name="field_asset_pick_required">Pick a result from the dropdown</string>
     <string name="field_quantity">Quantity</string>
     <string name="field_price">Price per unit</string>
     <string name="field_trade_date">Trade date</string>
@@ -42,6 +51,9 @@
     <string name="breakdown_subtitle">Native-currency view — no FX conversion.</string>
     <string name="breakdown_empty">No positions yet.</string>
     <string name="breakdown_page_empty">No trades in this currency for the selected period.</string>
+    <string name="breakdown_label_dividends">Dividends &amp; coupons</string>
+    <string name="breakdown_label_realized">Realized P&amp;L</string>
+    <string name="breakdown_label_unrealized">Unrealized P&amp;L</string>
     <string name="period_all">All time</string>
     <string name="period_ytd">YTD</string>
     <string name="period_1m">1m</string>

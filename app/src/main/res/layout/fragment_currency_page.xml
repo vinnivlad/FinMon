@@ -50,6 +50,71 @@
                 tools:text="+2,345.67 USD (+23.5%)"
                 tools:textColor="@color/pnl_positive" />
 
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="8dp"
+                android:background="?attr/colorOutlineVariant" />
+
+            <TableLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:stretchColumns="1">
+
+                <TableRow>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:alpha="0.8"
+                        android:text="@string/breakdown_label_dividends" />
+                    <TextView
+                        android:id="@+id/bucketDividends"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:gravity="end"
+                        tools:text="+45.00 USD"
+                        tools:textColor="@color/pnl_positive" />
+                </TableRow>
+
+                <TableRow android:layout_marginTop="2dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:alpha="0.8"
+                        android:text="@string/breakdown_label_realized" />
+                    <TextView
+                        android:id="@+id/bucketRealized"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:gravity="end"
+                        tools:text="+200.00 USD"
+                        tools:textColor="@color/pnl_positive" />
+                </TableRow>
+
+                <TableRow android:layout_marginTop="2dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:alpha="0.8"
+                        android:text="@string/breakdown_label_unrealized" />
+                    <TextView
+                        android:id="@+id/bucketUnrealized"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:gravity="end"
+                        tools:text="+2,100.67 USD"
+                        tools:textColor="@color/pnl_positive" />
+                </TableRow>
+
+            </TableLayout>
+
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 

@@ -1,14 +1,6 @@
-import java.util.Properties
-
 plugins {
     id("com.android.application")
 }
-
-val localProps = Properties().apply {
-    val f = rootProject.file("local.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
-}
-val stooqApiKey: String = localProps.getProperty("STOOQ_API_KEY", "")
 
 android {
     namespace = "com.my.finmon"
@@ -22,8 +14,6 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        buildConfigField("String", "STOOQ_API_KEY", "\"$stooqApiKey\"")
 
         javaCompileOptions {
             annotationProcessorOptions {

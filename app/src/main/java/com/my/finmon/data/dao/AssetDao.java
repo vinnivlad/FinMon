@@ -42,4 +42,8 @@ public interface AssetDao {
 
     @Query("SELECT * FROM asset ORDER BY type ASC, ticker ASC")
     LiveData<List<AssetEntity>> observeAll();
+
+    /** Wipes the whole table — used by the JSON import flow. */
+    @Query("DELETE FROM asset")
+    void deleteAll();
 }
