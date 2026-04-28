@@ -68,6 +68,57 @@
     <string name="chart_empty">No history yet — snapshots build up as the sync worker runs.</string>
     <string name="chart_line_value">Value</string>
     <string name="chart_line_invested">Invested</string>
+    <string name="chart_period_pnl_label">Period P&amp;L</string>
+    <string name="chart_currency_all">All</string>
+    <string name="chart_period_5d">5d</string>
+    <string name="chart_period_1m">1m</string>
+    <string name="chart_period_6m">6m</string>
+    <string name="chart_period_ytd">YTD</string>
+    <string name="chart_period_1y">1y</string>
+    <string name="chart_period_5y">5y</string>
+    <string name="chart_period_all">All</string>
+    <string name="chart_period_custom">Custom</string>
+    <string name="chart_custom_range_format">%1$s – %2$s</string>
+    <string name="chart_custom_picker_title">Pick a date range</string>
+
+    <!-- Market screen -->
+    <string name="market_title">Market</string>
+    <string name="market_pick_hint">Pick a held stock or search Yahoo for any ticker</string>
+    <string name="market_search_hint">Search ticker or company name</string>
+    <string name="market_empty_state">Pick a stock to see its price history.</string>
+    <string name="market_period_1d">1d</string>
+    <string name="market_period_5d">5d</string>
+    <string name="market_period_1m">1m</string>
+    <string name="market_period_6m">6m</string>
+    <string name="market_period_ytd">YTD</string>
+    <string name="market_period_1y">1y</string>
+    <string name="market_period_5y">5y</string>
+    <string name="market_period_all">All</string>
+    <string name="market_period_custom">Custom</string>
+    <string name="market_no_data">No data for the selected period.</string>
+    <string name="market_fetch_failed">Couldn\'t fetch data: %1$s</string>
+    <!-- Header: %1$s = price, %2$s = currency. -->
+    <string name="market_header_price">%1$s %2$s</string>
+    <!-- Header delta line: %1$s = signed percent (with arrow), %2$s = signed absolute, %3$s = period tag. -->
+    <string name="market_header_delta">%1$s (%2$s) %3$s</string>
+    <!-- Header timestamp + currency: %1$s = formatted now, %2$s = currency. -->
+    <string name="market_header_meta">%1$s · %2$s</string>
+    <string name="market_arrow_up">▲</string>
+    <string name="market_arrow_down">▼</string>
+    <string name="market_arrow_flat">•</string>
+    <string name="market_action_refresh">Refresh</string>
+
+    <!-- Portfolio screen tabs -->
+    <string name="portfolio_tab_holdings">Holdings</string>
+    <string name="portfolio_tab_analytics">Analytics</string>
+
+    <!-- Analytics tab -->
+    <string name="analytics_filter_by_type">By Type</string>
+    <string name="analytics_filter_by_currency">By Currency</string>
+    <string name="analytics_filter_by_asset">By Asset</string>
+    <string name="analytics_subtitle">Composition in %1$s</string>
+    <string name="analytics_empty">No holdings to break down yet.</string>
+    <string name="analytics_fx_gap_hint">Some currencies are missing FX rates — pies under-represent the portfolio for those.</string>
 
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>

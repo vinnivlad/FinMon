@@ -33,6 +33,7 @@ public class MainActivity extends AppCompatActivity {
         AppBarConfiguration appBarConfig = new AppBarConfiguration.Builder(
                 R.id.portfolioFragment,
                 R.id.chartFragment,
+                R.id.marketFragment,
                 R.id.settingsFragment
         ).build();
 

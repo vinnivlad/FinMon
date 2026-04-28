@@ -9,6 +9,10 @@
         android:title="@string/chart_title"
         android:icon="@android:drawable/ic_menu_recent_history" />
     <item
+        android:id="@+id/marketFragment"
+        android:title="@string/market_title"
+        android:icon="@drawable/ic_market" />
+    <item
         android:id="@+id/settingsFragment"
         android:title="@string/settings_title"
         android:icon="@drawable/ic_settings" />

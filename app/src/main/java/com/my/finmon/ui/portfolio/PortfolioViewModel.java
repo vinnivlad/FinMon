@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModelProvider;
 import com.my.finmon.ServiceLocator;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.PortfolioRepository;
+import com.my.finmon.data.repository.PortfolioRepository.AnalyticsBreakdown;
 import com.my.finmon.data.repository.PortfolioRepository.Holding;
 import com.my.finmon.data.repository.PortfolioRepository.MaturedBond;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
@@ -41,7 +42,11 @@ public final class PortfolioViewModel extends ViewModel {
     private final MutableLiveData<List<MaturedBond>> maturedBonds = new MutableLiveData<>();
     private final MutableLiveData<Boolean> maturedExpanded = new MutableLiveData<>(Boolean.FALSE);
     private final MutableLiveData<PortfolioTotals> totals = new MutableLiveData<>();
+    private final MutableLiveData<AnalyticsBreakdown> analytics = new MutableLiveData<>();
     private final MutableLiveData<String> error = new MutableLiveData<>();
+
+    /** Re-fetch analytics when the user changes display currency in Settings. */
+    private final androidx.lifecycle.Observer<Currency> displayCurrencyObserver = c -> refreshAnalytics();
 
     public PortfolioViewModel(
             @NonNull PortfolioRepository repo,
@@ -50,13 +55,21 @@ public final class PortfolioViewModel extends ViewModel {
         this.repo = repo;
         this.prefs = prefs;
         this.viewExecutor = viewExecutor;
+        prefs.displayCurrency().observeForever(displayCurrencyObserver);
         refresh();
+    }
+
+    @Override
+    protected void onCleared() {
+        prefs.displayCurrency().removeObserver(displayCurrencyObserver);
+        super.onCleared();
     }
 
     @NonNull public LiveData<List<Holding>> holdings() { return holdings; }
     @NonNull public LiveData<List<MaturedBond>> maturedBonds() { return maturedBonds; }
     @NonNull public LiveData<Boolean> maturedExpanded() { return maturedExpanded; }
     @NonNull public LiveData<PortfolioTotals> totals() { return totals; }
+    @NonNull public LiveData<AnalyticsBreakdown> analytics() { return analytics; }
     @NonNull public LiveData<Currency> displayCurrency() { return prefs.displayCurrency(); }
     @NonNull public LiveData<String> error() { return error; }
 
@@ -85,6 +98,24 @@ public final class PortfolioViewModel extends ViewModel {
             } catch (Exception e) {
                 Log.w(TAG, "totals refresh failed", e);
                 error.postValue(e.getMessage() != null ? e.getMessage() : e.toString());
+            }
+            try {
+                analytics.postValue(repo.getAnalyticsAsOf(today, prefs.getDisplayCurrency()).get());
+            } catch (Exception e) {
+                Log.w(TAG, "analytics refresh failed", e);
+                error.postValue(e.getMessage() != null ? e.getMessage() : e.toString());
+            }
+        });
+    }
+
+    /** Re-fetch only the analytics breakdown — used when display currency changes. */
+    public void refreshAnalytics() {
+        viewExecutor.execute(() -> {
+            LocalDate today = LocalDate.now();
+            try {
+                analytics.postValue(repo.getAnalyticsAsOf(today, prefs.getDisplayCurrency()).get());
+            } catch (Exception e) {
+                Log.w(TAG, "analytics refresh failed", e);
             }
         });
     }

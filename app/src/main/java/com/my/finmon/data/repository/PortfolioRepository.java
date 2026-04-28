@@ -514,6 +514,69 @@ public final class PortfolioRepository {
     }
 
     /**
+     * Three-axis breakdown of the portfolio's current value, all converted to
+     * {@code displayCurrency} so slice ratios are comparable. Drives the analytics-pie
+     * tab. Slices with non-positive values are filtered out — pie charts can't render
+     * negative slices anyway, and zero-value entries just clutter the legend.
+     *
+     * <p>{@code hasFxGaps} flags any holding whose native currency couldn't be converted
+     * (no FX row on or before {@code asOf}); those holdings are excluded from the slices,
+     * so pies can under-represent the portfolio when the flag is true. Surface that to
+     * the user the same way the chart does.
+     */
+    @NonNull
+    public Future<AnalyticsBreakdown> getAnalyticsAsOf(
+            @NonNull LocalDate asOf, @NonNull Currency displayCurrency) {
+        return executor.submit(() -> {
+            List<Holding> holdings = computeHoldingsSync(asOf);
+
+            // Cash piles are included in computeHoldingsSync regardless of balance —
+            // skip the truly zero ones so the pies aren't littered with empty slices.
+            Map<AssetType, BigDecimal> typeMap = new EnumMap<>(AssetType.class);
+            Map<Currency, BigDecimal> currencyMap = new EnumMap<>(Currency.class);
+            List<AssetSlice> assetSlices = new ArrayList<>(holdings.size());
+            boolean hasFxGaps = false;
+
+            for (Holding h : holdings) {
+                if (h.marketValue == null || h.marketValue.signum() == 0) continue;
+
+                BigDecimal inDisplay = convert(
+                        h.marketValue, h.asset.currency, displayCurrency, asOf);
+                if (inDisplay == null) {
+                    hasFxGaps = true;
+                    continue;
+                }
+                if (inDisplay.signum() <= 0) continue;
+
+                typeMap.merge(h.asset.type, inDisplay, BigDecimal::add);
+                currencyMap.merge(h.asset.currency, inDisplay, BigDecimal::add);
+                assetSlices.add(new AssetSlice(
+                        h.asset.id, h.asset.ticker, h.asset.type, h.asset.currency, inDisplay));
+            }
+
+            List<Slice> byType = new ArrayList<>(typeMap.size());
+            for (Map.Entry<AssetType, BigDecimal> e : typeMap.entrySet()) {
+                byType.add(new Slice(e.getKey().name(), e.getValue()));
+            }
+            List<Slice> byCurrency = new ArrayList<>(currencyMap.size());
+            for (Map.Entry<Currency, BigDecimal> e : currencyMap.entrySet()) {
+                byCurrency.add(new Slice(e.getKey().name(), e.getValue()));
+            }
+
+            // Largest slices first — easier to read in the legend.
+            byType.sort((a, b) -> b.value.compareTo(a.value));
+            byCurrency.sort((a, b) -> b.value.compareTo(a.value));
+            List<Slice> byAsset = new ArrayList<>(assetSlices.size());
+            assetSlices.sort((a, b) -> b.value.compareTo(a.value));
+            for (AssetSlice a : assetSlices) {
+                byAsset.add(new Slice(a.ticker, a.value));
+            }
+
+            return new AnalyticsBreakdown(displayCurrency, byType, byCurrency, byAsset, hasFxGaps);
+        });
+    }
+
+    /**
      * Returns stored daily snapshots in {@code [from, to]}, ascending by date. The chart
      * ViewModel appends a live right-edge point for today via {@link #getPortfolioTotals}.
      */
@@ -1141,6 +1204,66 @@ public final class PortfolioRepository {
             this.quantity = quantity;
             this.openCostBasis = openCostBasis;
             this.marketValue = marketValue;
+        }
+    }
+
+    /**
+     * One pie-chart slice — a label and its value in the breakdown's display currency.
+     * Slices with non-positive values are filtered out before the breakdown is returned.
+     */
+    public static final class Slice {
+        @NonNull public final String label;
+        @NonNull public final BigDecimal value;
+
+        public Slice(@NonNull String label, @NonNull BigDecimal value) {
+            this.label = label;
+            this.value = value;
+        }
+    }
+
+    /**
+     * Internal helper for {@link #getAnalyticsAsOf} — the by-asset list needs more than
+     * a label/value pair while building, but is flattened to {@link Slice} on return.
+     */
+    private static final class AssetSlice {
+        final long assetId;
+        @NonNull final String ticker;
+        @NonNull final AssetType type;
+        @NonNull final Currency currency;
+        @NonNull final BigDecimal value;
+
+        AssetSlice(long assetId, @NonNull String ticker, @NonNull AssetType type,
+                   @NonNull Currency currency, @NonNull BigDecimal value) {
+            this.assetId = assetId;
+            this.ticker = ticker;
+            this.type = type;
+            this.currency = currency;
+            this.value = value;
+        }
+    }
+
+    /**
+     * Three-axis breakdown returned by {@link #getAnalyticsAsOf}. All slice values are
+     * in {@link #displayCurrency}. Slice lists are sorted largest-first.
+     */
+    public static final class AnalyticsBreakdown {
+        @NonNull public final Currency displayCurrency;
+        @NonNull public final List<Slice> byType;
+        @NonNull public final List<Slice> byCurrency;
+        @NonNull public final List<Slice> byAsset;
+        public final boolean hasFxGaps;
+
+        public AnalyticsBreakdown(
+                @NonNull Currency displayCurrency,
+                @NonNull List<Slice> byType,
+                @NonNull List<Slice> byCurrency,
+                @NonNull List<Slice> byAsset,
+                boolean hasFxGaps) {
+            this.displayCurrency = displayCurrency;
+            this.byType = byType;
+            this.byCurrency = byCurrency;
+            this.byAsset = byAsset;
+            this.hasFxGaps = hasFxGaps;
         }
     }
 

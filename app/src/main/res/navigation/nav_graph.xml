@@ -45,6 +45,12 @@
         tools:layout="@layout/fragment_chart" />
 
     <fragment
+        android:id="@+id/marketFragment"
+        android:name="com.my.finmon.ui.market.MarketFragment"
+        android:label="@string/market_title"
+        tools:layout="@layout/fragment_market" />
+
+    <fragment
         android:id="@+id/settingsFragment"
         android:name="com.my.finmon.ui.settings.SettingsFragment"
         android:label="@string/settings_title"

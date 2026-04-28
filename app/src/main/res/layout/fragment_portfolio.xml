@@ -81,29 +81,21 @@
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/holdingsList"
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/portfolioTabs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:layout_constraintTop_toBottomOf="@id/totalsCard"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:tabMode="fixed" />
+
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/portfolioPager"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:clipToPadding="false"
-        android:paddingBottom="16dp"
-        app:layout_constraintTop_toBottomOf="@id/totalsCard"
+        app:layout_constraintTop_toBottomOf="@id/portfolioTabs"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <TextView
-        android:id="@+id/emptyState"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/portfolio_placeholder"
-        android:textAppearance="?attr/textAppearanceBodyMedium"
-        android:alpha="0.7"
-        android:textAlignment="center"
-        android:padding="32dp"
-        android:visibility="gone"
-        app:layout_constraintTop_toTopOf="@id/holdingsList"
-        app:layout_constraintBottom_toBottomOf="@id/holdingsList"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 

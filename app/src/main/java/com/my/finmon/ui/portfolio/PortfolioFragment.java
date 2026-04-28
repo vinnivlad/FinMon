@@ -12,13 +12,11 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.navigation.fragment.NavHostFragment;
-import androidx.recyclerview.widget.DividerItemDecoration;
-import androidx.recyclerview.widget.LinearLayoutManager;
 
+import com.google.android.material.tabs.TabLayout;
+import com.google.android.material.tabs.TabLayoutMediator;
 import com.my.finmon.R;
 import com.my.finmon.data.model.Currency;
-import com.my.finmon.data.repository.PortfolioRepository.Holding;
-import com.my.finmon.data.repository.PortfolioRepository.MaturedBond;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
 import com.my.finmon.databinding.FragmentPortfolioBinding;
 
@@ -27,12 +25,14 @@ import java.math.MathContext;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * Hosts the Portfolio screen's two-tab layout: Holdings (page 0) + Analytics (page 1).
+ * The totals card and FAB stay here as siblings of the ViewPager2; the pages
+ * themselves are slim observers of this fragment's {@link PortfolioViewModel}.
+ */
 public class PortfolioFragment extends Fragment {
 
     private static final DecimalFormat MONEY = buildFormat("#,##0.00");
@@ -43,7 +43,7 @@ public class PortfolioFragment extends Fragment {
 
     private FragmentPortfolioBinding binding;
     private PortfolioViewModel viewModel;
-    private HoldingsAdapter adapter;
+    private TabLayoutMediator tabMediator;
 
     @Nullable
     @Override
@@ -58,27 +58,26 @@ public class PortfolioFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        adapter = new HoldingsAdapter();
-        binding.holdingsList.setLayoutManager(new LinearLayoutManager(requireContext()));
-        binding.holdingsList.setAdapter(adapter);
-        binding.holdingsList.addItemDecoration(
-                new DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL));
-
         viewModel = new ViewModelProvider(
                 this,
                 PortfolioViewModel.factory(requireContext())
         ).get(PortfolioViewModel.class);
 
-        adapter.setOnToggleMaturedListener(viewModel::toggleMaturedExpanded);
+        binding.portfolioPager.setAdapter(new PortfolioPagerAdapter(this));
+        tabMediator = new TabLayoutMediator(
+                binding.portfolioTabs, binding.portfolioPager,
+                (TabLayout.Tab tab, int position) -> {
+                    int titleRes = (position == PortfolioPagerAdapter.PAGE_ANALYTICS)
+                            ? R.string.portfolio_tab_analytics
+                            : R.string.portfolio_tab_holdings;
+                    tab.setText(titleRes);
+                });
+        tabMediator.attach();
 
-        // The adapter renders a single combined list. Recompute it whenever any of the
-        // three inputs (active holdings, matured bonds, expanded flag) changes.
-        viewModel.holdings().observe(getViewLifecycleOwner(), list -> rebuildAdapterList());
-        viewModel.maturedBonds().observe(getViewLifecycleOwner(), list -> rebuildAdapterList());
-        viewModel.maturedExpanded().observe(getViewLifecycleOwner(), exp -> rebuildAdapterList());
-
-        viewModel.totals().observe(getViewLifecycleOwner(), t -> bindTotals(t, viewModel.displayCurrency().getValue()));
-        viewModel.displayCurrency().observe(getViewLifecycleOwner(), c -> bindTotals(viewModel.totals().getValue(), c));
+        viewModel.totals().observe(getViewLifecycleOwner(),
+                t -> bindTotals(t, viewModel.displayCurrency().getValue()));
+        viewModel.displayCurrency().observe(getViewLifecycleOwner(),
+                c -> bindTotals(viewModel.totals().getValue(), c));
 
         binding.totalsCard.setOnClickListener(v ->
                 NavHostFragment.findNavController(this)
@@ -87,37 +86,9 @@ public class PortfolioFragment extends Fragment {
         binding.fab.setOnClickListener(this::showFabMenu);
     }
 
-    private void rebuildAdapterList() {
-        if (binding == null) return;
-        List<Holding> active = viewModel.holdings().getValue();
-        List<MaturedBond> matured = viewModel.maturedBonds().getValue();
-        boolean expanded = Boolean.TRUE.equals(viewModel.maturedExpanded().getValue());
-
-        if (active == null) active = Collections.emptyList();
-        if (matured == null) matured = Collections.emptyList();
-
-        List<HoldingsAdapter.Item> items = new ArrayList<>(
-                active.size() + 1 + matured.size());
-        for (Holding h : active) items.add(new HoldingsAdapter.Item.Active(h));
-        if (!matured.isEmpty()) {
-            items.add(new HoldingsAdapter.Item.MaturedHeader(matured.size(), expanded));
-            if (expanded) {
-                for (MaturedBond b : matured) items.add(new HoldingsAdapter.Item.Matured(b));
-            }
-        }
-        adapter.submitList(items);
-
-        // Empty-state hint covers the no-active-and-no-matured case only — once a bond is
-        // matured the user has portfolio history worth showing, so keep the section visible.
-        boolean empty = active.isEmpty() && matured.isEmpty();
-        binding.emptyState.setVisibility(empty ? View.VISIBLE : View.GONE);
-    }
-
     private void bindTotals(@Nullable PortfolioTotals t, @Nullable Currency displayCurrency) {
         if (t == null) return;
 
-        // Pick the user-chosen display currency, falling back to the base if no FX rate
-        // exists (mirrors the gap-hint contract).
         Currency primary = displayCurrency != null ? displayCurrency : t.baseCurrency;
         BigDecimal primaryValue = t.valueByDisplayCurrency.get(primary);
         BigDecimal primaryInvested = t.investedByDisplayCurrency.get(primary);
@@ -131,7 +102,6 @@ public class PortfolioFragment extends Fragment {
 
         binding.totalAmount.setText(MONEY.format(primaryValue) + " " + primary.name());
 
-        // Ribbon of the same total in the other currencies.
         StringBuilder others = new StringBuilder();
         for (Map.Entry<Currency, BigDecimal> e : t.valueByDisplayCurrency.entrySet()) {
             if (e.getKey() == primary) continue;
@@ -189,6 +159,10 @@ public class PortfolioFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
+        if (tabMediator != null) {
+            tabMediator.detach();
+            tabMediator = null;
+        }
         super.onDestroyView();
         binding = null;
     }

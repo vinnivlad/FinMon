@@ -98,6 +98,81 @@ public final class YahooClient {
     }
 
     /**
+     * Time-series fetch for the Market browser tab — non-storing, returns timestamped
+     * close prices and the meta needed to render the price-detail header (longName,
+     * currency).
+     *
+     * <p>{@code interval} accepts Yahoo's standard tokens (1m / 5m / 15m / 30m / 60m /
+     * 1d / 1wk / 1mo). {@code range} is also a Yahoo token (1d / 5d / 1mo / 6mo / 1y /
+     * 5y / max / ytd). For arbitrary date windows use {@link #fetchSeriesWindow}
+     * instead.
+     */
+    @NonNull
+    public MarketSeries fetchSeriesByRange(
+            @NonNull String remoteSymbol,
+            @NonNull String interval,
+            @NonNull String range) throws IOException {
+        Response<YahooChartResponse> resp = service.getChartShort(remoteSymbol, interval, range).execute();
+        if (!resp.isSuccessful()) {
+            throw new IOException("Yahoo HTTP " + resp.code() + " for " + remoteSymbol);
+        }
+        return toSeries(remoteSymbol, firstResult(resp.body()));
+    }
+
+    /**
+     * Time-series fetch over an explicit epoch-second window. Used for the Custom
+     * range option in the Market browser.
+     */
+    @NonNull
+    public MarketSeries fetchSeriesWindow(
+            @NonNull String remoteSymbol,
+            @NonNull String interval,
+            long period1Epoch,
+            long period2Epoch) throws IOException {
+        Response<YahooChartResponse> resp = service
+                .getChart(remoteSymbol, interval, period1Epoch, period2Epoch, /* events */ null)
+                .execute();
+        if (!resp.isSuccessful()) {
+            throw new IOException("Yahoo HTTP " + resp.code() + " for " + remoteSymbol);
+        }
+        return toSeries(remoteSymbol, firstResult(resp.body()));
+    }
+
+    @NonNull
+    private static MarketSeries toSeries(
+            @NonNull String remoteSymbol,
+            @Nullable YahooChartResponse.Result r) {
+        if (r == null
+                || r.timestamp == null
+                || r.indicators == null
+                || r.indicators.quote == null
+                || r.indicators.quote.isEmpty()) {
+            return MarketSeries.empty(remoteSymbol);
+        }
+        List<Double> closes = r.indicators.quote.get(0).close;
+        if (closes == null) return MarketSeries.empty(remoteSymbol);
+
+        int n = Math.min(r.timestamp.size(), closes.size());
+        List<SeriesPoint> points = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            Long ts = r.timestamp.get(i);
+            Double close = closes.get(i);
+            if (ts == null || close == null) continue;  // Yahoo null-pads non-trading bars
+            points.add(new SeriesPoint(ts, BigDecimal.valueOf(close)));
+        }
+
+        String name = null;
+        String currency = null;
+        if (r.meta != null) {
+            name = (r.meta.longName != null && !r.meta.longName.isEmpty())
+                    ? r.meta.longName
+                    : r.meta.shortName;
+            currency = r.meta.currency;
+        }
+        return new MarketSeries(remoteSymbol, name, currency, points);
+    }
+
+    /**
      * One-shot meta lookup — used after a user picks a search result to discover the
      * security's reporting currency (Yahoo search itself doesn't include it). Returns
      * the ISO code as a string; the caller maps it onto the {@code Currency} enum and
@@ -265,6 +340,44 @@ public final class YahooClient {
         public SplitEvent(@NonNull LocalDateTime at, @NonNull BigDecimal ratio) {
             this.at = at;
             this.ratio = ratio;
+        }
+    }
+
+    /**
+     * Time-series result for the Market browser tab. {@code points} are
+     * timestamp-keyed (epoch seconds) so intraday bars survive intact.
+     */
+    public static final class MarketSeries {
+        @NonNull public final String symbol;
+        @Nullable public final String name;
+        @Nullable public final String currency;
+        @NonNull public final List<SeriesPoint> points;
+
+        public MarketSeries(
+                @NonNull String symbol,
+                @Nullable String name,
+                @Nullable String currency,
+                @NonNull List<SeriesPoint> points) {
+            this.symbol = symbol;
+            this.name = name;
+            this.currency = currency;
+            this.points = points;
+        }
+
+        @NonNull
+        static MarketSeries empty(@NonNull String symbol) {
+            return new MarketSeries(symbol, null, null, Collections.emptyList());
+        }
+    }
+
+    public static final class SeriesPoint {
+        /** Epoch second (UTC). */
+        public final long epochSecond;
+        @NonNull public final BigDecimal close;
+
+        public SeriesPoint(long epochSecond, @NonNull BigDecimal close) {
+            this.epochSecond = epochSecond;
+            this.close = close;
         }
     }
 

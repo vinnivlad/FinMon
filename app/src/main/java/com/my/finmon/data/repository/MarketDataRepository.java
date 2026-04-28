@@ -13,6 +13,7 @@ import com.my.finmon.data.remote.nbu.NbuBondDto;
 import com.my.finmon.data.remote.nbu.NbuClient;
 import com.my.finmon.data.remote.yahoo.YahooClient;
 import com.my.finmon.data.remote.yahoo.YahooClient.DailyAndEvents;
+import com.my.finmon.data.remote.yahoo.YahooClient.MarketSeries;
 import com.my.finmon.data.remote.yahoo.YahooClient.SearchHit;
 
 import java.math.BigDecimal;
@@ -127,6 +128,33 @@ public final class MarketDataRepository {
     @NonNull
     public Future<String> lookupCurrency(@NonNull String remoteSymbol) {
         return executor.submit(() -> yahooClient.lookupCurrency(remoteSymbol));
+    }
+
+    /**
+     * Fetches a price time-series from Yahoo for the Market browser tab. Non-storing —
+     * results live in memory only, since Market is a real-time browser, not a backfill
+     * tool. {@code interval} and {@code range} are Yahoo tokens (e.g. 5m / 1d / 1mo).
+     */
+    @NonNull
+    public Future<MarketSeries> fetchSeriesByRange(
+            @NonNull String remoteSymbol,
+            @NonNull String interval,
+            @NonNull String range) {
+        return executor.submit(() -> yahooClient.fetchSeriesByRange(remoteSymbol, interval, range));
+    }
+
+    /**
+     * Custom-window variant of {@link #fetchSeriesByRange}. Used by the Market tab's
+     * Custom date-range picker. Window is in epoch seconds (UTC).
+     */
+    @NonNull
+    public Future<MarketSeries> fetchSeriesWindow(
+            @NonNull String remoteSymbol,
+            @NonNull String interval,
+            long period1Epoch,
+            long period2Epoch) {
+        return executor.submit(() ->
+                yahooClient.fetchSeriesWindow(remoteSymbol, interval, period1Epoch, period2Epoch));
     }
 
     /**

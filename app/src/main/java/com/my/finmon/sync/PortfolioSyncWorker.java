@@ -49,8 +49,20 @@ public final class PortfolioSyncWorker extends Worker {
     }
 
     /**
-     * Enqueues the periodic sync. Safe to call on every app start — {@code KEEP} policy
-     * leaves an existing schedule alone.
+     * Enqueues the periodic sync. Called from {@code FinMonApplication.onCreate} on every
+     * app start.
+     *
+     * <p><b>Initial delay = interval</b> so the periodic worker never fires on cold
+     * launch — that case is owned by {@link StartupSyncOrchestrator}, which runs the
+     * same {@link SyncEngine} stages with UI progress. Without the initial delay, the
+     * worker would race the orchestrator on first install and produce duplicate Yahoo /
+     * Frankfurter calls before either's writes were visible to the other.
+     *
+     * <p><b>{@code REPLACE} policy</b> resets the next-fire time on every launch. As
+     * long as the user opens the app at least once per {@code INTERVAL_HOURS}, the
+     * worker effectively never fires — the orchestrator handles each app-open sync.
+     * The worker fires only when the user has been away for ≥{@code INTERVAL_HOURS},
+     * which is exactly the case the orchestrator can't cover.
      */
     public static void schedule(@NonNull Context ctx) {
         Constraints constraints = new Constraints.Builder()
@@ -60,11 +72,12 @@ public final class PortfolioSyncWorker extends Worker {
         PeriodicWorkRequest req = new PeriodicWorkRequest.Builder(
                 PortfolioSyncWorker.class, INTERVAL_HOURS, TimeUnit.HOURS)
                 .setConstraints(constraints)
+                .setInitialDelay(INTERVAL_HOURS, TimeUnit.HOURS)
                 .build();
 
         WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
                 UNIQUE_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.REPLACE,
                 req);
     }
 

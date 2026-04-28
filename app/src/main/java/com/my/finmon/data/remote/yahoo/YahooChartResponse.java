@@ -53,6 +53,9 @@ public final class YahooChartResponse {
         public String symbol;
         public String exchangeName;
         public String instrumentType;
+        /** Yahoo's full company / fund name. Empty/missing for some symbols. */
+        public String longName;
+        public String shortName;
     }
 
     public static final class Indicators {
