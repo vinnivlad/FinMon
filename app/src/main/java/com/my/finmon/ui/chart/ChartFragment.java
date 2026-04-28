@@ -97,7 +97,7 @@ public class ChartFragment extends Fragment {
 
         binding.subtitle.setText(getString(
                 R.string.chart_subtitle,
-                cd != null ? cd.baseCurrency.name() : ""));
+                cd != null ? cd.displayCurrency.name() : ""));
 
         if (empty) {
             binding.chart.clear();
@@ -114,8 +114,8 @@ public class ChartFragment extends Fragment {
         float maxY = Float.NEGATIVE_INFINITY;
         for (ChartViewModel.Point p : cd.points) {
             float x = p.date.toEpochDay() - x0.toEpochDay();
-            float v = p.valueInBase.floatValue();
-            float i = p.investedInBase.floatValue();
+            float v = p.value.floatValue();
+            float i = p.invested.floatValue();
             valueEntries.add(new Entry(x, v));
             investedEntries.add(new Entry(x, i));
             if (v < minY) minY = v;

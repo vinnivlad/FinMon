@@ -33,5 +33,16 @@ public enum EventType {
      * event must be present <em>before</em> any subsequent dividend or sell so the
      * FIFO walk computes correct held quantity.
      */
-    SPLIT
+    SPLIT,
+    /**
+     * Bond principal repayment (the cash leg). Lives on a {@code CASH_*} pile, with
+     * {@code incomeSourceAssetId} pointing back to the redeemed bond. Paired with an
+     * {@link #OUT} event on the bond asset (price = face) at the same timestamp,
+     * inserted atomically.
+     *
+     * <p>Distinct from {@link #DIVIDEND} so a same-date coupon and principal don't
+     * collide on the {@code (incomeSourceAssetId, date)} dedup key. At most one
+     * MATURITY event per bond ever — see {@code EventDao.findMaturityForAsset}.
+     */
+    MATURITY
 }

@@ -28,7 +28,7 @@ import com.my.finmon.data.entity.StockPriceEntity;
                 StockPriceEntity.class,
                 PortfolioValueSnapshotEntity.class
         },
-        version = 5,
+        version = 6,
         exportSchema = true
 )
 @TypeConverters(Converters.class)

@@ -5,7 +5,6 @@
     <string name="portfolio_title">Portfolio</string>
     <string name="portfolio_placeholder">No holdings yet. Add your first asset to start tracking market P&amp;L separately from cash flows.</string>
     <string name="fab_add">Add</string>
-    <string name="menu_add_asset">Add asset</string>
     <string name="menu_record_trade">Record trade</string>
     <string name="menu_export_data">Export data</string>
     <string name="menu_import_data">Import data</string>
@@ -69,4 +68,58 @@
     <string name="chart_empty">No history yet — snapshots build up as the sync worker runs.</string>
     <string name="chart_line_value">Value</string>
     <string name="chart_line_invested">Invested</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_display">Display</string>
+    <string name="settings_display_currency_label">Display currency</string>
+    <string name="settings_display_currency_help">Which currency the headline totals are shown in. Stored values stay in USD; this only affects rendering.</string>
+    <string name="settings_section_manual_entry">Manual entry</string>
+    <string name="settings_section_data">Data</string>
+    <string name="settings_manual_entry_help">Backup paths for data the auto-ingest pipeline can\'t reach — off-NBU bonds, special distributions, very old history.</string>
+    <string name="settings_action_add_asset">Add asset</string>
+    <string name="settings_action_manual_event">Record dividend or coupon</string>
+
+    <!-- Manual event screen -->
+    <string name="manual_event_title">Record dividend, coupon, or redemption</string>
+    <string name="manual_event_help">Use this when auto-ingest didn\'t reach an event — off-NBU bonds, special distributions, manual bond redemptions, or very old history.</string>
+    <string name="manual_event_field_asset">Source asset</string>
+    <string name="manual_event_field_amount">Cash amount received</string>
+    <string name="manual_event_amount_help">Total cash received, not per-share. Currency follows the asset.</string>
+    <string name="manual_event_amount_positive">Must be positive</string>
+    <string name="manual_event_field_date">Pay date</string>
+    <string name="manual_event_no_assets">No tradeable assets yet — add one first.</string>
+    <string name="manual_event_kind_income">Dividend / coupon</string>
+    <string name="manual_event_kind_maturity">Bond redemption</string>
+    <string name="manual_event_redemption_help">Closes the bond at face value. Cash returned = face × current open quantity. Only available when a bond is selected.</string>
+    <string name="manual_event_redemption_preview">Cash returned: %1$s %2$s (face %3$s × %4$s)</string>
+    <string name="manual_event_redemption_no_open">No open lots — bond is already closed or not yet bought.</string>
+    <string name="manual_event_redemption_only_bonds">Bond redemption applies to bonds only.</string>
+    <string name="manual_event_already_redeemed">This bond is already redeemed.</string>
+
+    <!-- Matured bonds section -->
+    <string name="matured_section_label">Matured bonds (%1$d)</string>
+    <string name="matured_chevron_collapsed">▸</string>
+    <string name="matured_chevron_expanded">▾</string>
+    <string name="matured_row_title_with_name">%1$s · %2$s · %3$s</string>
+    <string name="matured_row_title">%1$s · %2$s</string>
+    <string name="matured_row_matured_on">Matured %1$s</string>
+    <string name="matured_row_matured_unknown">Matured</string>
+    <string name="matured_row_breakdown">%1$s + %2$s coupons − %3$s invested</string>
+
+    <!-- Startup sync overlay -->
+    <string name="startup_initializing">Initializing…</string>
+    <string name="startup_starting">Starting sync…</string>
+    <string name="startup_stage_stock_prices">Fetching prices: %1$s (%2$d/%3$d)</string>
+    <string name="startup_stage_stock_prices_indeterminate">Fetching prices…</string>
+    <string name="startup_stage_fx">Updating exchange rates…</string>
+    <string name="startup_stage_bond_coupons">Updating bond coupons: %1$s (%2$d/%3$d)</string>
+    <string name="startup_stage_bond_coupons_indeterminate">Updating bond coupons…</string>
+    <string name="startup_stage_snapshots">Computing snapshots: %1$s (%2$d/%3$d)</string>
+    <string name="startup_stage_snapshots_indeterminate">Computing snapshots…</string>
+    <string name="startup_failed_title">Sync failed</string>
+    <string name="startup_failed_message">%1$s</string>
+    <string name="startup_failed_no_internet">No internet connection. Connect to a network and retry, or continue with whatever\'s currently stored.</string>
+    <string name="startup_action_retry">Retry</string>
+    <string name="startup_action_continue">Continue with stale data</string>
 </resources>

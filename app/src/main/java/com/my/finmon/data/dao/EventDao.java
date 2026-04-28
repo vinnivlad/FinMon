@@ -92,6 +92,28 @@ public abstract class EventDao {
             long assetId, LocalDateTime startOfDay, LocalDateTime endOfDayExclusive);
 
     /**
+     * Single-row probe for the bond's principal-repayment event. A bond has at most one
+     * MATURITY event ever, so no date range is needed. Serves both idempotency
+     * (auto-ingest, manual entry) AND matured-bond detection (the matured-bonds UI
+     * section enumerates bonds with a non-null result here).
+     */
+    @Query("SELECT * FROM event "
+            + "WHERE incomeSourceAssetId = :bondAssetId "
+            + "AND type = 'MATURITY' "
+            + "LIMIT 1")
+    @Nullable
+    public abstract EventEntity findMaturityForAsset(long bondAssetId);
+
+    /**
+     * All bond IDs that have a MATURITY event recorded. Cheap "which bonds are matured?"
+     * lookup for the portfolio screen — beats N findMaturityForAsset probes when the
+     * holdings list is big.
+     */
+    @Query("SELECT DISTINCT incomeSourceAssetId FROM event "
+            + "WHERE type = 'MATURITY' AND incomeSourceAssetId IS NOT NULL")
+    public abstract List<Long> findMaturedBondIds();
+
+    /**
      * Number of events at exactly {@code ts} whose asset is NOT cash. Used by the
      * portfolio-totals query to distinguish a trade-leg cash event (paired with a
      * stock/bond event at the same timestamp) from a standalone deposit or withdrawal.

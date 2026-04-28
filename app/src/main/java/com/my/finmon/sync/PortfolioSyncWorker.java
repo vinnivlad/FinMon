@@ -14,50 +14,22 @@ import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
 import com.my.finmon.ServiceLocator;
-import com.my.finmon.data.dao.ExchangeRateDao;
-import com.my.finmon.data.dao.PortfolioValueDao;
-import com.my.finmon.data.dao.StockPriceDao;
-import com.my.finmon.data.entity.AssetEntity;
-import com.my.finmon.data.entity.PortfolioValueSnapshotEntity;
-import com.my.finmon.data.model.AssetType;
-import com.my.finmon.data.model.Currency;
-import com.my.finmon.data.remote.nbu.NbuBondDto;
-import com.my.finmon.data.remote.yahoo.YahooClient;
-import com.my.finmon.data.remote.yahoo.YahooClient.DailyAndEvents;
-import com.my.finmon.data.repository.MarketDataRepository;
-import com.my.finmon.data.repository.PortfolioRepository;
-import com.my.finmon.data.repository.PortfolioRepository.DividendIngest;
-import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
-import com.my.finmon.data.repository.PortfolioRepository.SplitIngest;
 
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-
-import java.util.ArrayList;
-
-import java.time.LocalDate;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Keeps the {@code stock_price} and {@code exchange_rate} tables current. Each run walks
- * from {@code latest_stored + 1} up to yesterday for every tracked ticker and for the FX
- * pairs. On a fresh DB (nothing stored yet) it bootstraps with a one-week window so there's
- * something to look at while the user is wiring up initial data.
+ * Periodic background refresh — keeps {@code stock_price}, {@code exchange_rate}, bond
+ * coupons, and {@code portfolio_value} snapshots current. Same logic the foreground
+ * {@link StartupSyncOrchestrator} runs; both delegate to {@link SyncEngine}.
  *
- * Scope NOTE: this is a <em>keep-up-to-date</em> worker, not a backfill. When the user adds
- * a trade dated earlier than anything in {@code stock_price}, we'll trigger a one-shot
- * backfill from the trade date — that work lives in the "add trade" flow, not here.
- *
- * Failures for individual tickers are logged and swallowed — one bad symbol or a
- * provider-side gap shouldn't stop the rest of the sync.
+ * <p>Per-item failures are caught inside the engine; only structural exceptions reach
+ * here and turn into {@code Result.retry()}.
  */
 public final class PortfolioSyncWorker extends Worker {
 
     private static final String TAG = "PortfolioSyncWorker";
     private static final String UNIQUE_NAME = "finmon_sync";
     private static final long INTERVAL_HOURS = 12;
-    private static final int BOOTSTRAP_DAYS = 7;
 
     public PortfolioSyncWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
@@ -67,166 +39,13 @@ public final class PortfolioSyncWorker extends Worker {
     @Override
     public Result doWork() {
         ServiceLocator sl = ServiceLocator.get(getApplicationContext());
-        LocalDate yesterday = LocalDate.now().minusDays(1);
         try {
-            syncStockPrices(sl, yesterday);
-            syncFxRates(sl, yesterday);
-            syncBondCoupons(sl);
-            // Snapshots depend on the freshly-synced price/FX/coupon tables, so run last.
-            syncPortfolioSnapshots(sl, yesterday);
+            SyncEngine.runAll(sl, SyncEngine.ProgressCallback.NO_OP);
             return Result.success();
         } catch (Exception e) {
-            // Only structural failures land here — per-ticker errors are caught inside.
             Log.w(TAG, "sync aborted", e);
             return Result.retry();
         }
-    }
-
-    private void syncStockPrices(ServiceLocator sl, LocalDate yesterday) {
-        StockPriceDao priceDao = sl.database().stockPriceDao();
-        MarketDataRepository md = sl.marketDataRepository();
-        PortfolioRepository portfolio = sl.portfolioRepository();
-        List<AssetEntity> stocks = sl.database().assetDao().findByType(AssetType.STOCK);
-
-        for (AssetEntity stock : stocks) {
-            if (stock.remoteTicker == null || stock.remoteTicker.isBlank()) {
-                // Manual-price or unsupported-exchange asset — no remote sync for it.
-                continue;
-            }
-            LocalDate latest = priceDao.latestDate(stock.ticker);
-            LocalDate from = (latest != null) ? latest.plusDays(1) : yesterday.minusDays(BOOTSTRAP_DAYS);
-            if (from.isAfter(yesterday)) continue;
-
-            try {
-                // One Yahoo round-trip pulls candles + dividends + splits.
-                DailyAndEvents result = md.fetchAndStoreStockPricesWithEvents(
-                        stock.remoteTicker, stock.ticker, from, yesterday).get();
-                Log.i(TAG, "Yahoo " + stock.remoteTicker + " " + from + "→" + yesterday + ": "
-                        + result.prices.size() + " prices, "
-                        + result.dividends.size() + " divs, "
-                        + result.splits.size() + " splits");
-
-                // Forward events to the portfolio repo for idempotent ingestion.
-                List<DividendIngest> divs = new ArrayList<>(result.dividends.size());
-                for (YahooClient.DividendEvent d : result.dividends) {
-                    divs.add(new DividendIngest(d.at, d.perShareAmount));
-                }
-                List<SplitIngest> splits = new ArrayList<>(result.splits.size());
-                for (YahooClient.SplitEvent s : result.splits) {
-                    splits.add(new SplitIngest(s.at, s.ratio));
-                }
-                if (!divs.isEmpty() || !splits.isEmpty()) {
-                    Integer written = portfolio.ingestStockEvents(stock.id, divs, splits).get();
-                    Log.i(TAG, "ingested " + written + " events for " + stock.ticker);
-                }
-            } catch (Exception e) {
-                // Yahoo "no data" returns empty cleanly — this catches IOException,
-                // parse errors, and DB failures. Log and continue to the next ticker.
-                Log.w(TAG, "Yahoo sync failed for " + stock.ticker, e);
-            }
-        }
-    }
-
-    private void syncFxRates(ServiceLocator sl, LocalDate yesterday) {
-        ExchangeRateDao fxDao = sl.database().exchangeRateDao();
-        // EUR→USD is always present in every Frankfurter response we care about, so it's a
-        // reliable bellwether for "what's the most recent FX date we have?".
-        LocalDate latest = fxDao.latestDate(Currency.EUR, Currency.USD);
-        LocalDate from = (latest != null) ? latest.plusDays(1) : yesterday.minusDays(BOOTSTRAP_DAYS);
-        if (from.isAfter(yesterday)) return;
-
-        try {
-            Integer rows = sl.marketDataRepository().fetchAndStoreFxRates(from, yesterday).get();
-            Log.i(TAG, "Frankfurter " + from + "→" + yesterday + ": " + rows + " rows");
-        } catch (Exception e) {
-            Log.w(TAG, "Frankfurter sync failed", e);
-        }
-    }
-
-    /**
-     * For every held BOND with a non-null ISIN, look up its NBU payment schedule and
-     * ingest any past coupon payments not already in the event log. Bonds with no
-     * ISIN (manually entered, or matured and dropped from NBU's listing) are skipped.
-     */
-    private void syncBondCoupons(ServiceLocator sl) {
-        MarketDataRepository md = sl.marketDataRepository();
-        PortfolioRepository portfolio = sl.portfolioRepository();
-        List<AssetEntity> bonds = sl.database().assetDao().findByType(AssetType.BOND);
-
-        for (AssetEntity bond : bonds) {
-            if (bond.isin == null || bond.isin.isBlank()) continue;
-            try {
-                NbuBondDto dto = md.findBondByIsin(bond.isin).get();
-                if (dto == null || dto.payments == null) {
-                    Log.i(TAG, "NBU has no schedule for " + bond.isin);
-                    continue;
-                }
-                List<DividendIngest> coupons = new ArrayList<>();
-                for (NbuBondDto.Payment p : dto.payments) {
-                    if (p == null || !"1".equals(p.pay_type)) continue;  // only coupons
-                    if (p.pay_date == null || p.pay_val == null) continue;
-                    LocalDate d;
-                    try {
-                        d = LocalDate.parse(p.pay_date);
-                    } catch (Exception ex) {
-                        continue;
-                    }
-                    // Stamp at 09:00 so coupon timestamps don't collide with same-day
-                    // user-entered noon trades — keeps trade-leg detection unconfused.
-                    LocalDateTime at = LocalDateTime.of(d, LocalTime.of(9, 0));
-                    coupons.add(new DividendIngest(at,
-                            new java.math.BigDecimal(p.pay_val.toString())));
-                }
-                if (coupons.isEmpty()) continue;
-                Integer written = portfolio.ingestBondCoupons(bond.id, coupons).get();
-                Log.i(TAG, "NBU " + bond.isin + ": ingested " + written + " coupons");
-            } catch (Exception e) {
-                Log.w(TAG, "NBU coupon sync failed for " + bond.ticker, e);
-            }
-        }
-    }
-
-    private void syncPortfolioSnapshots(ServiceLocator sl, LocalDate yesterday) {
-        PortfolioValueDao snapDao = sl.database().portfolioValueDao();
-        PortfolioRepository repo = sl.portfolioRepository();
-
-        // 1) Walk latestSnapshot+1..yesterday and write a snapshot for each missing date.
-        LocalDate latest = snapDao.latestDate();
-        LocalDate from = (latest != null) ? latest.plusDays(1) : yesterday.minusDays(BOOTSTRAP_DAYS);
-        for (LocalDate d = from; !d.isAfter(yesterday); d = d.plusDays(1)) {
-            try {
-                PortfolioTotals t = repo.getPortfolioTotals(d).get();
-                snapDao.upsert(toSnapshot(d, t));
-            } catch (Exception e) {
-                // One bad day shouldn't stop the rest — log and continue.
-                Log.w(TAG, "snapshot failed for " + d, e);
-            }
-        }
-
-        // 2) Re-compute any existing gappy snapshots — FX backfill may have filled holes.
-        //    Only overwrite if the new snapshot is less gappy (clean) to avoid pointless churn.
-        List<PortfolioValueSnapshotEntity> gappy = snapDao.findGappyUpTo(yesterday);
-        for (PortfolioValueSnapshotEntity old : gappy) {
-            try {
-                PortfolioTotals t = repo.getPortfolioTotals(old.date).get();
-                if (!t.hasFxGaps) {
-                    snapDao.upsert(toSnapshot(old.date, t));
-                    Log.i(TAG, "snapshot un-gapped for " + old.date);
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "snapshot re-compute failed for " + old.date, e);
-            }
-        }
-    }
-
-    private static PortfolioValueSnapshotEntity toSnapshot(LocalDate d, PortfolioTotals t) {
-        PortfolioValueSnapshotEntity s = new PortfolioValueSnapshotEntity();
-        s.date = d;
-        s.baseCurrency = t.baseCurrency;
-        s.valueInBase = t.valueInBase;
-        s.investedInBase = t.investedInBase;
-        s.hasFxGaps = t.hasFxGaps;
-        return s;
     }
 
     /**
@@ -250,9 +69,9 @@ public final class PortfolioSyncWorker extends Worker {
     }
 
     /**
-     * Fires the worker once, immediately (subject to network constraint). Used in DEBUG
-     * builds to demonstrate Yahoo / Frankfurter wiring without waiting 12h for the
-     * periodic schedule's first run.
+     * Fires the worker once, immediately (subject to network constraint). Kept for
+     * ad-hoc testing — production app-open sync now goes through
+     * {@link StartupSyncOrchestrator}, not this method.
      */
     public static void runOnce(@NonNull Context ctx) {
         Constraints constraints = new Constraints.Builder()

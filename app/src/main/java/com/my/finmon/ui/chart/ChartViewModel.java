@@ -6,14 +6,16 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.my.finmon.ServiceLocator;
-import com.my.finmon.data.entity.PortfolioValueSnapshotEntity;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.PortfolioRepository;
+import com.my.finmon.data.repository.PortfolioRepository.ConvertedSnapshot;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
+import com.my.finmon.prefs.UserPreferences;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -22,32 +24,47 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Backs the time-series chart: pulls stored daily snapshots + appends a live right-edge
- * point for today via {@link PortfolioRepository#getPortfolioTotals}. Today's point reflects
- * the latest-stored closes (sync worker walks ..yesterday only — no intraday feed).
+ * Backs the time-series chart. Snapshots are always stored in
+ * {@code PortfolioRepository.BASE_CURRENCY} (USD); this VM converts them on the fly into
+ * the user's chosen display currency via {@code getSnapshotsInDisplay}, then appends
+ * today's live right-edge point from {@link PortfolioRepository#getPortfolioTotals}.
  *
- * Period picker is deferred to step 9; this VM currently loads everything available.
+ * Refreshes when the display-currency preference changes — same UTC/timezone analogy
+ * as the portfolio header.
  */
 public final class ChartViewModel extends ViewModel {
 
     private static final String TAG = "ChartVM";
 
     private final PortfolioRepository repo;
+    private final UserPreferences prefs;
     private final ExecutorService viewExecutor;
 
     private final MutableLiveData<ChartData> data = new MutableLiveData<>();
 
+    /** Held as a field so we can detach in {@link #onCleared}. */
+    private final Observer<Currency> displayCurrencyObserver = c -> refresh();
+
     public ChartViewModel(
             @NonNull PortfolioRepository repo,
+            @NonNull UserPreferences prefs,
             @NonNull ExecutorService viewExecutor) {
         this.repo = repo;
+        this.prefs = prefs;
         this.viewExecutor = viewExecutor;
-        refresh();
+        prefs.displayCurrency().observeForever(displayCurrencyObserver);
+    }
+
+    @Override
+    protected void onCleared() {
+        prefs.displayCurrency().removeObserver(displayCurrencyObserver);
+        super.onCleared();
     }
 
     @NonNull public LiveData<ChartData> data() { return data; }
 
     public void refresh() {
+        Currency displayCurrency = prefs.getDisplayCurrency();
         viewExecutor.execute(() -> {
             try {
                 LocalDate today = LocalDate.now();
@@ -56,29 +73,31 @@ public final class ChartViewModel extends ViewModel {
                 LocalDate from = today.minusYears(10);
                 LocalDate yesterday = today.minusDays(1);
 
-                List<PortfolioValueSnapshotEntity> snapshots = repo.getSnapshots(from, yesterday).get();
+                List<ConvertedSnapshot> snapshots =
+                        repo.getSnapshotsInDisplay(from, yesterday, displayCurrency).get();
                 PortfolioTotals todayTotals = repo.getPortfolioTotals(today).get();
 
                 List<Point> points = new ArrayList<>(snapshots.size() + 1);
                 boolean anyGaps = false;
-                Currency baseCurrency = todayTotals.baseCurrency;
 
-                for (PortfolioValueSnapshotEntity s : snapshots) {
-                    points.add(new Point(s.date, s.valueInBase, s.investedInBase, s.hasFxGaps));
+                for (ConvertedSnapshot s : snapshots) {
+                    points.add(new Point(s.date, s.value, s.invested, s.hasFxGaps));
                     if (s.hasFxGaps) anyGaps = true;
-                    // Snapshots store the base currency they were computed in. Mixing two
-                    // currencies on one chart would silently mis-scale — prefer the snapshot's
-                    // own base if it differs (won't happen until Settings screen exists).
-                    baseCurrency = s.baseCurrency;
                 }
-                points.add(new Point(
-                        today,
-                        todayTotals.valueInBase,
-                        todayTotals.investedInBase,
-                        todayTotals.hasFxGaps));
-                if (todayTotals.hasFxGaps) anyGaps = true;
 
-                data.postValue(new ChartData(todayTotals.baseCurrency, points, anyGaps));
+                // Today's right-edge point. Reuse the totals' display-currency map; fall
+                // back to base if FX is missing for today (also marks a gap).
+                BigDecimal todayValue = todayTotals.valueByDisplayCurrency.get(displayCurrency);
+                BigDecimal todayInvested = todayTotals.investedByDisplayCurrency.get(displayCurrency);
+                boolean todayGap = todayTotals.hasFxGaps
+                        || todayValue == null
+                        || todayInvested == null;
+                if (todayValue == null) todayValue = todayTotals.valueInBase;
+                if (todayInvested == null) todayInvested = todayTotals.investedInBase;
+                points.add(new Point(today, todayValue, todayInvested, todayGap));
+                if (todayGap) anyGaps = true;
+
+                data.postValue(new ChartData(displayCurrency, points, anyGaps));
             } catch (Exception e) {
                 Log.w(TAG, "refresh failed", e);
             }
@@ -94,7 +113,10 @@ public final class ChartViewModel extends ViewModel {
             @SuppressWarnings("unchecked")
             public <T extends ViewModel> T create(@NonNull Class<T> modelClass) {
                 if (modelClass.isAssignableFrom(ChartViewModel.class)) {
-                    return (T) new ChartViewModel(sl.portfolioRepository(), sl.viewExecutor());
+                    return (T) new ChartViewModel(
+                            sl.portfolioRepository(),
+                            sl.userPreferences(),
+                            sl.viewExecutor());
                 }
                 throw new IllegalArgumentException("Unknown ViewModel class: " + modelClass);
             }
@@ -102,12 +124,16 @@ public final class ChartViewModel extends ViewModel {
     }
 
     public static final class ChartData {
-        @NonNull public final Currency baseCurrency;
+        /** Currency the points are expressed in (the user's chosen display currency). */
+        @NonNull public final Currency displayCurrency;
         @NonNull public final List<Point> points;
         public final boolean hasAnyGaps;
 
-        public ChartData(@NonNull Currency baseCurrency, @NonNull List<Point> points, boolean hasAnyGaps) {
-            this.baseCurrency = baseCurrency;
+        public ChartData(
+                @NonNull Currency displayCurrency,
+                @NonNull List<Point> points,
+                boolean hasAnyGaps) {
+            this.displayCurrency = displayCurrency;
             this.points = points;
             this.hasAnyGaps = hasAnyGaps;
         }
@@ -115,18 +141,20 @@ public final class ChartViewModel extends ViewModel {
 
     public static final class Point {
         @NonNull public final LocalDate date;
-        @NonNull public final BigDecimal valueInBase;
-        @NonNull public final BigDecimal investedInBase;
+        /** Value in the {@link ChartData#displayCurrency}. */
+        @NonNull public final BigDecimal value;
+        /** Invested in the {@link ChartData#displayCurrency}. */
+        @NonNull public final BigDecimal invested;
         public final boolean hasFxGaps;
 
         public Point(
                 @NonNull LocalDate date,
-                @NonNull BigDecimal valueInBase,
-                @NonNull BigDecimal investedInBase,
+                @NonNull BigDecimal value,
+                @NonNull BigDecimal invested,
                 boolean hasFxGaps) {
             this.date = date;
-            this.valueInBase = valueInBase;
-            this.investedInBase = investedInBase;
+            this.value = value;
+            this.invested = invested;
             this.hasFxGaps = hasFxGaps;
         }
     }

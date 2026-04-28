@@ -6,6 +6,7 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.ListAdapter;
@@ -15,6 +16,7 @@ import com.my.finmon.R;
 import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.repository.PortfolioRepository.Holding;
+import com.my.finmon.data.repository.PortfolioRepository.MaturedBond;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -25,17 +27,23 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * Each row:
- *   ┌── ticker ──────────────── primaryValue ──┐
- *   └── type · ccy ─────────────── subValue ──┘
- *                                      pnl (colored)
+ * Three-row-type adapter:
+ * <ul>
+ *   <li>{@link Item.Active} — a regular open holding (existing layout).</li>
+ *   <li>{@link Item.MaturedHeader} — collapsible section header with chevron + count.
+ *       Clicking it fires {@code onToggle} so the fragment can flip the expanded flag
+ *       and re-submit the list.</li>
+ *   <li>{@link Item.Matured} — a redeemed-bond row (only emitted when expanded).</li>
+ * </ul>
  *
- * primaryValue: market value in native currency (falls back to quantity if no market
- * data yet, e.g. a just-added stock with no price stored).
- * subValue: qty × avg-cost-per-unit (STOCK/BOND), hidden for cash.
- * pnl: marketValue − openCostBasis, colored green/red/neutral.
+ * The fragment is responsible for assembling the input list in the right order:
+ * <pre>active... + headerIfAnyMatured + maturedRowsIfExpanded</pre>
  */
-public final class HoldingsAdapter extends ListAdapter<Holding, HoldingsAdapter.Row> {
+public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, RecyclerView.ViewHolder> {
+
+    private static final int VT_ACTIVE = 0;
+    private static final int VT_MATURED_HEADER = 1;
+    private static final int VT_MATURED_ROW = 2;
 
     private static final DecimalFormat QTY = buildFormat("#,##0.######");
     private static final DecimalFormat MONEY = buildFormat("#,##0.00");
@@ -43,59 +51,115 @@ public final class HoldingsAdapter extends ListAdapter<Holding, HoldingsAdapter.
     private static final DecimalFormat SIGNED_MONEY = buildFormat("+#,##0.00;-#,##0.00");
     private static final MathContext PCT_MC = new MathContext(4, RoundingMode.HALF_UP);
 
+    @Nullable private Runnable onToggleMatured;
+
     public HoldingsAdapter() {
         super(DIFF);
     }
 
+    public void setOnToggleMaturedListener(@Nullable Runnable listener) {
+        this.onToggleMatured = listener;
+    }
+
+    @Override
+    public int getItemViewType(int position) {
+        Item it = getItem(position);
+        if (it instanceof Item.Active) return VT_ACTIVE;
+        if (it instanceof Item.MaturedHeader) return VT_MATURED_HEADER;
+        if (it instanceof Item.Matured) return VT_MATURED_ROW;
+        throw new IllegalStateException("Unknown item type at " + position);
+    }
+
     @NonNull
     @Override
-    public Row onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View v = LayoutInflater.from(parent.getContext())
-                .inflate(R.layout.item_holding, parent, false);
-        return new Row(v);
+    public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        LayoutInflater inflater = LayoutInflater.from(parent.getContext());
+        switch (viewType) {
+            case VT_MATURED_HEADER:
+                return new HeaderRow(inflater.inflate(R.layout.item_matured_header, parent, false));
+            case VT_MATURED_ROW:
+                return new MaturedRow(inflater.inflate(R.layout.item_matured_bond, parent, false));
+            case VT_ACTIVE:
+            default:
+                return new ActiveRow(inflater.inflate(R.layout.item_holding, parent, false));
+        }
     }
 
     @Override
-    public void onBindViewHolder(@NonNull Row row, int position) {
-        row.bind(getItem(position));
+    public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+        Item it = getItem(position);
+        if (holder instanceof ActiveRow && it instanceof Item.Active) {
+            ((ActiveRow) holder).bind(((Item.Active) it).holding);
+        } else if (holder instanceof HeaderRow && it instanceof Item.MaturedHeader) {
+            ((HeaderRow) holder).bind((Item.MaturedHeader) it);
+        } else if (holder instanceof MaturedRow && it instanceof Item.Matured) {
+            ((MaturedRow) holder).bind(((Item.Matured) it).bond);
+        }
     }
 
-    static final class Row extends RecyclerView.ViewHolder {
+    // ─── Items ──────────────────────────────────────────────────────────────
+
+    /** Polymorphic input. Use the static factories from the fragment. */
+    public abstract static class Item {
+        abstract Object diffKey();
+
+        public static final class Active extends Item {
+            @NonNull final Holding holding;
+            public Active(@NonNull Holding h) { this.holding = h; }
+            @Override Object diffKey() { return "A:" + holding.asset.id; }
+        }
+
+        public static final class MaturedHeader extends Item {
+            final int count;
+            final boolean expanded;
+            public MaturedHeader(int count, boolean expanded) {
+                this.count = count;
+                this.expanded = expanded;
+            }
+            @Override Object diffKey() { return "H"; }
+        }
+
+        public static final class Matured extends Item {
+            @NonNull final MaturedBond bond;
+            public Matured(@NonNull MaturedBond b) { this.bond = b; }
+            @Override Object diffKey() { return "M:" + bond.assetId; }
+        }
+    }
+
+    // ─── ViewHolders ────────────────────────────────────────────────────────
+
+    static final class ActiveRow extends RecyclerView.ViewHolder {
         final TextView ticker;
         final TextView typeCurrency;
         final TextView primaryValue;
         final TextView subValue;
         final TextView pnl;
 
-        Row(@NonNull View itemView) {
-            super(itemView);
-            ticker = itemView.findViewById(R.id.ticker);
-            typeCurrency = itemView.findViewById(R.id.typeCurrency);
-            primaryValue = itemView.findViewById(R.id.primaryValue);
-            subValue = itemView.findViewById(R.id.subValue);
-            pnl = itemView.findViewById(R.id.pnl);
+        ActiveRow(@NonNull View v) {
+            super(v);
+            ticker = v.findViewById(R.id.ticker);
+            typeCurrency = v.findViewById(R.id.typeCurrency);
+            primaryValue = v.findViewById(R.id.primaryValue);
+            subValue = v.findViewById(R.id.subValue);
+            pnl = v.findViewById(R.id.pnl);
         }
 
         void bind(@NonNull Holding h) {
             AssetEntity a = h.asset;
             ticker.setText(a.ticker);
             typeCurrency.setText(a.type.name() + " · " + a.currency.name());
-
             String ccy = a.currency.name();
 
             if (a.type == AssetType.CASH) {
-                // Cash: just the balance. No cost, no P&L.
                 primaryValue.setText(MONEY.format(h.quantity) + " " + ccy);
                 subValue.setVisibility(View.GONE);
                 pnl.setVisibility(View.GONE);
                 return;
             }
 
-            // STOCK / BOND
             if (h.marketValue != null) {
                 primaryValue.setText(MONEY.format(h.marketValue) + " " + ccy);
             } else {
-                // No price yet — fall back to showing just the quantity.
                 primaryValue.setText(QTY.format(h.quantity));
             }
 
@@ -111,9 +175,7 @@ public final class HoldingsAdapter extends ListAdapter<Holding, HoldingsAdapter.
                 BigDecimal delta = h.marketValue.subtract(h.openCostBasis);
                 BigDecimal pct = delta.divide(h.openCostBasis, PCT_MC).multiply(new BigDecimal("100"));
                 pnl.setText(SIGNED_MONEY.format(delta) + " (" + PCT.format(pct) + ")");
-                int color = delta.signum() > 0
-                        ? R.color.pnl_positive
-                        : (delta.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
+                int color = pnlColor(delta);
                 pnl.setTextColor(ContextCompat.getColor(itemView.getContext(), color));
                 pnl.setVisibility(View.VISIBLE);
             } else {
@@ -122,20 +184,107 @@ public final class HoldingsAdapter extends ListAdapter<Holding, HoldingsAdapter.
         }
     }
 
-    private static final DiffUtil.ItemCallback<Holding> DIFF = new DiffUtil.ItemCallback<Holding>() {
+    final class HeaderRow extends RecyclerView.ViewHolder {
+        final TextView label;
+        final TextView chevron;
+
+        HeaderRow(@NonNull View v) {
+            super(v);
+            label = v.findViewById(R.id.headerLabel);
+            chevron = v.findViewById(R.id.chevron);
+            v.setOnClickListener(view -> {
+                if (onToggleMatured != null) onToggleMatured.run();
+            });
+        }
+
+        void bind(@NonNull Item.MaturedHeader h) {
+            label.setText(itemView.getContext().getString(R.string.matured_section_label, h.count));
+            chevron.setText(itemView.getContext().getString(
+                    h.expanded ? R.string.matured_chevron_expanded : R.string.matured_chevron_collapsed));
+        }
+    }
+
+    static final class MaturedRow extends RecyclerView.ViewHolder {
+        final TextView ticker;
+        final TextView maturityLine;
+        final TextView pnl;
+        final TextView principalLine;
+
+        MaturedRow(@NonNull View v) {
+            super(v);
+            ticker = v.findViewById(R.id.ticker);
+            maturityLine = v.findViewById(R.id.maturityLine);
+            pnl = v.findViewById(R.id.pnl);
+            principalLine = v.findViewById(R.id.principalLine);
+        }
+
+        void bind(@NonNull MaturedBond b) {
+            String title = (b.name != null && !b.name.isBlank())
+                    ? itemView.getContext().getString(
+                            R.string.matured_row_title_with_name, b.ticker, b.name, b.currency.name())
+                    : itemView.getContext().getString(
+                            R.string.matured_row_title, b.ticker, b.currency.name());
+            ticker.setText(title);
+
+            maturityLine.setText(b.maturityDate != null
+                    ? itemView.getContext().getString(R.string.matured_row_matured_on, b.maturityDate)
+                    : itemView.getContext().getString(R.string.matured_row_matured_unknown));
+
+            pnl.setText(SIGNED_MONEY.format(b.realizedPnl) + " " + b.currency.name());
+            pnl.setTextColor(ContextCompat.getColor(itemView.getContext(), pnlColor(b.realizedPnl)));
+
+            principalLine.setText(itemView.getContext().getString(
+                    R.string.matured_row_breakdown,
+                    MONEY.format(b.principalReturned),
+                    MONEY.format(b.couponsReceived),
+                    MONEY.format(b.invested)));
+        }
+    }
+
+    private static int pnlColor(@NonNull BigDecimal delta) {
+        return delta.signum() > 0
+                ? R.color.pnl_positive
+                : (delta.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
+    }
+
+    // ─── Diff ───────────────────────────────────────────────────────────────
+
+    private static final DiffUtil.ItemCallback<Item> DIFF = new DiffUtil.ItemCallback<Item>() {
         @Override
-        public boolean areItemsTheSame(@NonNull Holding a, @NonNull Holding b) {
-            return a.asset.id == b.asset.id;
+        public boolean areItemsTheSame(@NonNull Item a, @NonNull Item b) {
+            return Objects.equals(a.diffKey(), b.diffKey());
         }
 
         @Override
-        public boolean areContentsTheSame(@NonNull Holding a, @NonNull Holding b) {
-            return sameBD(a.quantity, b.quantity)
-                    && sameBD(a.openCostBasis, b.openCostBasis)
-                    && sameBD(a.marketValue, b.marketValue)
-                    && Objects.equals(a.asset.ticker, b.asset.ticker)
-                    && a.asset.type == b.asset.type
-                    && a.asset.currency == b.asset.currency;
+        public boolean areContentsTheSame(@NonNull Item a, @NonNull Item b) {
+            if (a instanceof Item.Active && b instanceof Item.Active) {
+                Holding ha = ((Item.Active) a).holding;
+                Holding hb = ((Item.Active) b).holding;
+                return sameBD(ha.quantity, hb.quantity)
+                        && sameBD(ha.openCostBasis, hb.openCostBasis)
+                        && sameBD(ha.marketValue, hb.marketValue)
+                        && Objects.equals(ha.asset.ticker, hb.asset.ticker)
+                        && ha.asset.type == hb.asset.type
+                        && ha.asset.currency == hb.asset.currency;
+            }
+            if (a instanceof Item.MaturedHeader && b instanceof Item.MaturedHeader) {
+                Item.MaturedHeader ah = (Item.MaturedHeader) a;
+                Item.MaturedHeader bh = (Item.MaturedHeader) b;
+                return ah.count == bh.count && ah.expanded == bh.expanded;
+            }
+            if (a instanceof Item.Matured && b instanceof Item.Matured) {
+                MaturedBond ba = ((Item.Matured) a).bond;
+                MaturedBond bb = ((Item.Matured) b).bond;
+                return sameBD(ba.realizedPnl, bb.realizedPnl)
+                        && sameBD(ba.invested, bb.invested)
+                        && sameBD(ba.couponsReceived, bb.couponsReceived)
+                        && sameBD(ba.principalReturned, bb.principalReturned)
+                        && Objects.equals(ba.maturityDate, bb.maturityDate)
+                        && Objects.equals(ba.ticker, bb.ticker)
+                        && Objects.equals(ba.name, bb.name)
+                        && ba.currency == bb.currency;
+            }
+            return false;
         }
 
         private boolean sameBD(BigDecimal x, BigDecimal y) {

@@ -56,18 +56,25 @@ public final class DevSeeder {
     private static final MathContext MC = new MathContext(12, RoundingMode.HALF_UP);
 
     public static void seed(@NonNull ServiceLocator sl) {
-        sl.viewExecutor().execute(() -> {
-            try {
-                seedBlocking(
-                        sl.portfolioRepository(),
-                        sl.database().stockPriceDao(),
-                        sl.database().exchangeRateDao(),
-                        sl.database().portfolioValueDao());
-                Log.i(TAG, "seeded dev fixtures");
-            } catch (Exception e) {
-                Log.w(TAG, "dev seed failed", e);
-            }
-        });
+        sl.viewExecutor().execute(() -> seedSync(sl));
+    }
+
+    /**
+     * Synchronous variant — runs on the calling thread. Intended for the
+     * {@code FinMonApplication} → seed → startup-sync chain so the orchestrator
+     * doesn't race ahead of an empty DB.
+     */
+    public static void seedSync(@NonNull ServiceLocator sl) {
+        try {
+            seedBlocking(
+                    sl.portfolioRepository(),
+                    sl.database().stockPriceDao(),
+                    sl.database().exchangeRateDao(),
+                    sl.database().portfolioValueDao());
+            Log.i(TAG, "seeded dev fixtures");
+        } catch (Exception e) {
+            Log.w(TAG, "dev seed failed", e);
+        }
     }
 
     private static void seedBlocking(
@@ -92,6 +99,17 @@ public final class DevSeeder {
                 new BigDecimal("1000"),
                 new BigDecimal("12"),
                 LocalDate.of(2028, 9, 15))).get();
+        // Pre-matured bond — purchased ~18 months ago, redeemed 7 days ago. Lets the
+        // matured-bonds section render offline without waiting on NBU.
+        LocalDate bond3MaturityDate = today.minusDays(7);
+        long bond3Id = repo.findOrCreateAsset(bond(
+                "UA111122223_1", "OVDP UA matured (16%)",
+                new BigDecimal("1000"),
+                new BigDecimal("16"),
+                bond3MaturityDate)).get();
+        // Held inside the stubbed FX window (t−100d..t−60d) so the t−95d purchase still
+        // gets a usable UAH→USD rate via findOnOrBefore. A longer-dated fixture would
+        // mark every historical snapshot as fx-gappy.
 
         // ── Cash deposits ───────────────────────────────────────────────────
         // t−100d: initial capital across all three currencies.
@@ -124,6 +142,13 @@ public final class DevSeeder {
         //   t−20d 10 @ €595 — above stub (~€588) — bought high
         //   t−5d   SELL 4 @ €598 — FIFO eats 4 of t−70 lot
 
+        // Pre-matured bond (90-day): bought t−95d at slight premium, one mid-life coupon,
+        // redeemed t−7d. Funded by the t−100d UAH deposit. Realized P&L surfaces as
+        // (10,000 + 800 coupon) − 10,100 invested = +700 UAH on the matured-bonds row.
+        repo.recordStockTrade(Side.BUY, bond3Id,
+                new BigDecimal("10"), new BigDecimal("1010"),
+                today.minusDays(95).atTime(LocalTime.NOON)).get();
+
         // Premium bond bought first so the coupon at t−30d has something to attach to.
         repo.recordStockTrade(Side.BUY, bond2Id,
                 new BigDecimal("50"), new BigDecimal("1050"),
@@ -153,6 +178,11 @@ public final class DevSeeder {
                 new BigDecimal("15"), new BigDecimal("570"),
                 today.minusDays(40).atTime(LocalTime.NOON)).get();
 
+        // Mid-life coupon on bond3 (the matured fixture). Stamped at 09:00 to dodge any
+        // same-day noon trade collision with the trade-leg detection.
+        repo.recordCouponPayment(bond3Id, new BigDecimal("800"), Currency.UAH,
+                today.minusDays(45).atTime(LocalTime.of(9, 0))).get();
+
         // Semi-annual coupon on bond2: 50 units × face 1000 × 12% ÷ 2 = 3,000 UAH.
         repo.recordCouponPayment(bond2Id, new BigDecimal("3000"), Currency.UAH,
                 today.minusDays(30).atTime(LocalTime.NOON)).get();
@@ -177,6 +207,11 @@ public final class DevSeeder {
                 new BigDecimal("4"), new BigDecimal("598"),
                 today.minusDays(5).atTime(LocalTime.NOON)).get();
 
+        // Redeem the pre-matured fixture: closes bond3's lots and credits CASH_UAH with
+        // face × 10 = 10,000 UAH. Realized P&L on the matured row = (10,000 + 1,600
+        // coupons) − 10,200 invested = +1,400 UAH.
+        repo.recordBondMaturity(bond3Id, bond3MaturityDate).get();
+
         // Stub stock_price and exchange_rate data so the Totals card has something to
         // convert with on the first onResume. No Yahoo / Frankfurter calls — this lets
         // the emulator run offline and keeps API quota for real use. Periodic sync worker
@@ -196,6 +231,15 @@ public final class DevSeeder {
             s.valueInBase = t.valueInBase;
             s.investedInBase = t.investedInBase;
             s.hasFxGaps = t.hasFxGaps;
+            var usd = t.bucketByCurrency.get(Currency.USD);
+            var eur = t.bucketByCurrency.get(Currency.EUR);
+            var uah = t.bucketByCurrency.get(Currency.UAH);
+            s.valueUsd = usd != null ? usd.value : BigDecimal.ZERO;
+            s.valueEur = eur != null ? eur.value : BigDecimal.ZERO;
+            s.valueUah = uah != null ? uah.value : BigDecimal.ZERO;
+            s.investedUsd = usd != null ? usd.invested : BigDecimal.ZERO;
+            s.investedEur = eur != null ? eur.invested : BigDecimal.ZERO;
+            s.investedUah = uah != null ? uah.invested : BigDecimal.ZERO;
             portfolioValueDao.upsert(s);
         }
     }

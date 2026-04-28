@@ -1,17 +1,11 @@
 package com.my.finmon.ui.portfolio;
 
-import android.content.Intent;
-import android.net.Uri;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.PopupMenu;
 
-import androidx.activity.result.ActivityResult;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
@@ -21,33 +15,25 @@ import androidx.navigation.fragment.NavHostFragment;
 import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
-import com.google.android.material.snackbar.Snackbar;
 import com.my.finmon.R;
-import com.my.finmon.ServiceLocator;
 import com.my.finmon.data.model.Currency;
-import com.my.finmon.data.repository.ImportExportRepository;
-import com.my.finmon.data.repository.ImportExportRepository.ImportResult;
+import com.my.finmon.data.repository.PortfolioRepository.Holding;
+import com.my.finmon.data.repository.PortfolioRepository.MaturedBond;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
 import com.my.finmon.databinding.FragmentPortfolioBinding;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
-import java.nio.charset.StandardCharsets;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
-import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
 
 public class PortfolioFragment extends Fragment {
-
-    private static final String TAG = "PortfolioFragment";
 
     private static final DecimalFormat MONEY = buildFormat("#,##0.00");
     private static final DecimalFormat SIGNED_MONEY = buildFormat("+#,##0.00;-#,##0.00");
@@ -58,14 +44,6 @@ public class PortfolioFragment extends Fragment {
     private FragmentPortfolioBinding binding;
     private PortfolioViewModel viewModel;
     private HoldingsAdapter adapter;
-
-    /** SAF launchers — registered at construction time so they can be invoked from the FAB menu. */
-    private final ActivityResultLauncher<Intent> exportLauncher = registerForActivityResult(
-            new ActivityResultContracts.StartActivityForResult(),
-            this::onExportPicked);
-    private final ActivityResultLauncher<Intent> importLauncher = registerForActivityResult(
-            new ActivityResultContracts.StartActivityForResult(),
-            this::onImportPicked);
 
     @Nullable
     @Override
@@ -91,13 +69,16 @@ public class PortfolioFragment extends Fragment {
                 PortfolioViewModel.factory(requireContext())
         ).get(PortfolioViewModel.class);
 
-        viewModel.holdings().observe(getViewLifecycleOwner(), list -> {
-            adapter.submitList(list);
-            boolean empty = (list == null || list.isEmpty());
-            binding.emptyState.setVisibility(empty ? View.VISIBLE : View.GONE);
-        });
+        adapter.setOnToggleMaturedListener(viewModel::toggleMaturedExpanded);
 
-        viewModel.totals().observe(getViewLifecycleOwner(), this::bindTotals);
+        // The adapter renders a single combined list. Recompute it whenever any of the
+        // three inputs (active holdings, matured bonds, expanded flag) changes.
+        viewModel.holdings().observe(getViewLifecycleOwner(), list -> rebuildAdapterList());
+        viewModel.maturedBonds().observe(getViewLifecycleOwner(), list -> rebuildAdapterList());
+        viewModel.maturedExpanded().observe(getViewLifecycleOwner(), exp -> rebuildAdapterList());
+
+        viewModel.totals().observe(getViewLifecycleOwner(), t -> bindTotals(t, viewModel.displayCurrency().getValue()));
+        viewModel.displayCurrency().observe(getViewLifecycleOwner(), c -> bindTotals(viewModel.totals().getValue(), c));
 
         binding.totalsCard.setOnClickListener(v ->
                 NavHostFragment.findNavController(this)
@@ -106,15 +87,54 @@ public class PortfolioFragment extends Fragment {
         binding.fab.setOnClickListener(this::showFabMenu);
     }
 
-    private void bindTotals(@Nullable PortfolioTotals t) {
+    private void rebuildAdapterList() {
+        if (binding == null) return;
+        List<Holding> active = viewModel.holdings().getValue();
+        List<MaturedBond> matured = viewModel.maturedBonds().getValue();
+        boolean expanded = Boolean.TRUE.equals(viewModel.maturedExpanded().getValue());
+
+        if (active == null) active = Collections.emptyList();
+        if (matured == null) matured = Collections.emptyList();
+
+        List<HoldingsAdapter.Item> items = new ArrayList<>(
+                active.size() + 1 + matured.size());
+        for (Holding h : active) items.add(new HoldingsAdapter.Item.Active(h));
+        if (!matured.isEmpty()) {
+            items.add(new HoldingsAdapter.Item.MaturedHeader(matured.size(), expanded));
+            if (expanded) {
+                for (MaturedBond b : matured) items.add(new HoldingsAdapter.Item.Matured(b));
+            }
+        }
+        adapter.submitList(items);
+
+        // Empty-state hint covers the no-active-and-no-matured case only — once a bond is
+        // matured the user has portfolio history worth showing, so keep the section visible.
+        boolean empty = active.isEmpty() && matured.isEmpty();
+        binding.emptyState.setVisibility(empty ? View.VISIBLE : View.GONE);
+    }
+
+    private void bindTotals(@Nullable PortfolioTotals t, @Nullable Currency displayCurrency) {
         if (t == null) return;
 
-        binding.totalAmount.setText(MONEY.format(t.valueInBase) + " " + t.baseCurrency.name());
+        // Pick the user-chosen display currency, falling back to the base if no FX rate
+        // exists (mirrors the gap-hint contract).
+        Currency primary = displayCurrency != null ? displayCurrency : t.baseCurrency;
+        BigDecimal primaryValue = t.valueByDisplayCurrency.get(primary);
+        BigDecimal primaryInvested = t.investedByDisplayCurrency.get(primary);
+        BigDecimal primaryPnl = t.pnlByDisplayCurrency.get(primary);
+        if (primaryValue == null || primaryInvested == null || primaryPnl == null) {
+            primary = t.baseCurrency;
+            primaryValue = t.valueInBase;
+            primaryInvested = t.investedInBase;
+            primaryPnl = t.pnlInBase;
+        }
 
-        // Ribbon of the same total in other display currencies.
+        binding.totalAmount.setText(MONEY.format(primaryValue) + " " + primary.name());
+
+        // Ribbon of the same total in the other currencies.
         StringBuilder others = new StringBuilder();
         for (Map.Entry<Currency, BigDecimal> e : t.valueByDisplayCurrency.entrySet()) {
-            if (e.getKey() == t.baseCurrency) continue;
+            if (e.getKey() == primary) continue;
             if (others.length() > 0) others.append(" · ");
             others.append(MONEY.format(e.getValue())).append(' ').append(e.getKey().name());
         }
@@ -127,19 +147,19 @@ public class PortfolioFragment extends Fragment {
 
         binding.totalInvested.setText(getString(
                 R.string.totals_invested_label,
-                MONEY.format(t.investedInBase) + " " + t.baseCurrency.name()));
+                MONEY.format(primaryInvested) + " " + primary.name()));
 
-        if (t.investedInBase.signum() != 0) {
-            BigDecimal pct = t.pnlInBase.divide(t.investedInBase.abs(), PCT_MC).multiply(HUNDRED);
+        if (primaryInvested.signum() != 0) {
+            BigDecimal pct = primaryPnl.divide(primaryInvested.abs(), PCT_MC).multiply(HUNDRED);
             binding.totalPnl.setText(
-                    SIGNED_MONEY.format(t.pnlInBase) + " " + t.baseCurrency.name()
+                    SIGNED_MONEY.format(primaryPnl) + " " + primary.name()
                             + " (" + PCT.format(pct) + ")");
         } else {
-            binding.totalPnl.setText(SIGNED_MONEY.format(t.pnlInBase) + " " + t.baseCurrency.name());
+            binding.totalPnl.setText(SIGNED_MONEY.format(primaryPnl) + " " + primary.name());
         }
-        int color = t.pnlInBase.signum() > 0
+        int color = primaryPnl.signum() > 0
                 ? R.color.pnl_positive
-                : (t.pnlInBase.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
+                : (primaryPnl.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
         binding.totalPnl.setTextColor(ContextCompat.getColor(requireContext(), color));
 
         binding.fxGapHint.setVisibility(t.hasFxGaps ? View.VISIBLE : View.GONE);
@@ -150,131 +170,14 @@ public class PortfolioFragment extends Fragment {
         menu.inflate(R.menu.portfolio_fab_menu);
         menu.setOnMenuItemClickListener(item -> {
             int id = item.getItemId();
-            if (id == R.id.menu_add_asset) {
-                NavHostFragment.findNavController(this)
-                        .navigate(R.id.action_portfolio_to_addAsset);
-                return true;
-            }
             if (id == R.id.menu_record_trade) {
                 NavHostFragment.findNavController(this)
                         .navigate(R.id.action_portfolio_to_addTrade);
                 return true;
             }
-            if (id == R.id.menu_export_data) {
-                launchExport();
-                return true;
-            }
-            if (id == R.id.menu_import_data) {
-                launchImport();
-                return true;
-            }
             return false;
         });
         menu.show();
-    }
-
-    // ─── Import / Export ────────────────────────────────────────────────────
-
-    private void launchExport() {
-        String fileName = getString(R.string.export_default_filename, LocalDate.now().toString());
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
-                .addCategory(Intent.CATEGORY_OPENABLE)
-                .setType("application/json")
-                .putExtra(Intent.EXTRA_TITLE, fileName);
-        exportLauncher.launch(intent);
-    }
-
-    private void launchImport() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
-                .addCategory(Intent.CATEGORY_OPENABLE)
-                .setType("*/*")
-                // Accept JSON variants users may save under (some editors use text/plain).
-                .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/json", "text/plain", "*/*"});
-        importLauncher.launch(intent);
-    }
-
-    private void onExportPicked(@NonNull ActivityResult result) {
-        Uri uri = (result.getData() != null) ? result.getData().getData() : null;
-        if (uri == null) return;
-        ServiceLocator sl = ServiceLocator.get(requireContext());
-        ImportExportRepository repo = sl.importExportRepository();
-        ExecutorService bridge = sl.viewExecutor();
-        bridge.execute(() -> {
-            try {
-                String json = repo.exportToJson().get();
-                int assetCount = countMatches(json, "\"ticker\"");
-                int eventCount = countMatches(json, "\"timestamp\"");
-                writeBytes(uri, json.getBytes(StandardCharsets.UTF_8));
-                postSnack(getString(R.string.export_success, assetCount, eventCount));
-            } catch (Exception e) {
-                Log.w(TAG, "export failed", e);
-                postSnack(getString(R.string.export_failed,
-                        e.getMessage() != null ? e.getMessage() : e.toString()));
-            }
-        });
-    }
-
-    private void onImportPicked(@NonNull ActivityResult result) {
-        Uri uri = (result.getData() != null) ? result.getData().getData() : null;
-        if (uri == null) return;
-        ServiceLocator sl = ServiceLocator.get(requireContext());
-        ImportExportRepository repo = sl.importExportRepository();
-        ExecutorService bridge = sl.viewExecutor();
-        bridge.execute(() -> {
-            try {
-                String json = readText(uri);
-                ImportResult r = repo.importFromJson(json).get();
-                postSnack(getString(R.string.import_success,
-                        r.assetsImported, r.eventsImported, r.eventsEnriched));
-                requireActivity().runOnUiThread(() -> {
-                    if (viewModel != null) viewModel.refresh();
-                });
-            } catch (Exception e) {
-                Log.w(TAG, "import failed", e);
-                Throwable cause = (e.getCause() != null) ? e.getCause() : e;
-                postSnack(getString(R.string.import_failed,
-                        cause.getMessage() != null ? cause.getMessage() : cause.toString()));
-            }
-        });
-    }
-
-    private void writeBytes(@NonNull Uri uri, @NonNull byte[] bytes) throws Exception {
-        try (OutputStream out = requireContext().getContentResolver().openOutputStream(uri, "wt")) {
-            if (out == null) throw new IllegalStateException("Could not open " + uri);
-            out.write(bytes);
-            out.flush();
-        }
-    }
-
-    @NonNull
-    private String readText(@NonNull Uri uri) throws Exception {
-        try (InputStream in = requireContext().getContentResolver().openInputStream(uri)) {
-            if (in == null) throw new IllegalStateException("Could not open " + uri);
-            StringBuilder sb = new StringBuilder();
-            try (BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-                char[] buf = new char[4096];
-                int n;
-                while ((n = r.read(buf)) > 0) sb.append(buf, 0, n);
-            }
-            return sb.toString();
-        }
-    }
-
-    /** Quick-and-dirty hit count for snackbar feedback. Not parsing JSON twice for speed. */
-    private static int countMatches(@NonNull String haystack, @NonNull String needle) {
-        int count = 0;
-        int from = 0;
-        while ((from = haystack.indexOf(needle, from)) >= 0) {
-            count++;
-            from += needle.length();
-        }
-        return count;
-    }
-
-    private void postSnack(@NonNull String text) {
-        if (!isAdded() || binding == null) return;
-        requireActivity().runOnUiThread(() ->
-                Snackbar.make(binding.getRoot(), text, Snackbar.LENGTH_LONG).show());
     }
 
     @Override

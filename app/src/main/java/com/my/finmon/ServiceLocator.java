@@ -14,6 +14,8 @@ import com.my.finmon.data.remote.yahoo.YahooService;
 import com.my.finmon.data.repository.ImportExportRepository;
 import com.my.finmon.data.repository.MarketDataRepository;
 import com.my.finmon.data.repository.PortfolioRepository;
+import com.my.finmon.prefs.UserPreferences;
+import com.my.finmon.sync.StartupSyncOrchestrator;
 import com.squareup.moshi.Moshi;
 
 import java.io.IOException;
@@ -61,9 +63,12 @@ public final class ServiceLocator {
     private final PortfolioRepository portfolioRepository;
     private final MarketDataRepository marketDataRepository;
     private final ImportExportRepository importExportRepository;
+    private final UserPreferences userPreferences;
+    private final StartupSyncOrchestrator startupSyncOrchestrator;
 
     private ServiceLocator(@NonNull Context appContext) {
         this.database = FinMonDatabase.get(appContext);
+        this.userPreferences = new UserPreferences(appContext);
 
         this.ioExecutor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "finmon-io");
@@ -144,6 +149,8 @@ public final class ServiceLocator {
                 marketDataRepository,
                 viewExecutor,
                 moshi);
+
+        this.startupSyncOrchestrator = new StartupSyncOrchestrator(this, appContext);
     }
 
     /** Sets a constant User-Agent on every outgoing request. Yahoo requires non-empty UA. */
@@ -181,4 +188,6 @@ public final class ServiceLocator {
     @NonNull public PortfolioRepository portfolioRepository() { return portfolioRepository; }
     @NonNull public MarketDataRepository marketDataRepository() { return marketDataRepository; }
     @NonNull public ImportExportRepository importExportRepository() { return importExportRepository; }
+    @NonNull public UserPreferences userPreferences() { return userPreferences; }
+    @NonNull public StartupSyncOrchestrator startupSyncOrchestrator() { return startupSyncOrchestrator; }
 }

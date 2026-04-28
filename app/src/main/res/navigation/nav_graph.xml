@@ -12,10 +12,6 @@
         tools:layout="@layout/fragment_portfolio">
 
         <action
-            android:id="@+id/action_portfolio_to_addAsset"
-            app:destination="@id/addAssetFragment" />
-
-        <action
             android:id="@+id/action_portfolio_to_addTrade"
             app:destination="@id/addTradeFragment" />
 
@@ -47,5 +43,26 @@
         android:name="com.my.finmon.ui.chart.ChartFragment"
         android:label="@string/chart_title"
         tools:layout="@layout/fragment_chart" />
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.my.finmon.ui.settings.SettingsFragment"
+        android:label="@string/settings_title"
+        tools:layout="@layout/fragment_settings">
+
+        <action
+            android:id="@+id/action_settings_to_addAsset"
+            app:destination="@id/addAssetFragment" />
+
+        <action
+            android:id="@+id/action_settings_to_manualEvent"
+            app:destination="@id/manualEventFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/manualEventFragment"
+        android:name="com.my.finmon.ui.manualevent.ManualEventFragment"
+        android:label="@string/manual_event_title"
+        tools:layout="@layout/fragment_manual_event" />
 
 </navigation>

@@ -1,0 +1,255 @@
+package com.my.finmon.ui.settings;
+
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
+import android.widget.Filter;
+
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import androidx.lifecycle.ViewModelProvider;
+import androidx.navigation.fragment.NavHostFragment;
+
+import com.google.android.material.snackbar.Snackbar;
+import com.my.finmon.R;
+import com.my.finmon.ServiceLocator;
+import com.my.finmon.data.model.Currency;
+import com.my.finmon.data.repository.ImportExportRepository;
+import com.my.finmon.data.repository.ImportExportRepository.ImportResult;
+import com.my.finmon.databinding.FragmentSettingsBinding;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+
+/**
+ * Settings hub. Hosts:
+ * <ul>
+ *     <li>Display-currency picker — purely a render-layer choice; the app's base currency
+ *         stays fixed at USD ({@code PortfolioRepository.BASE_CURRENCY}).</li>
+ *     <li>"Add asset" — alternate entry to {@code AddAssetFragment}, since most asset
+ *         creation now happens implicitly via the Add Trade autocomplete.</li>
+ *     <li>"Record manual event" — backup path for income (dividend/coupon) the auto-ingest
+ *         pipeline can't reach (off-NBU bonds, special distributions, historical data).</li>
+ *     <li>Export/Import — full-portfolio JSON dump and restore via SAF.</li>
+ * </ul>
+ */
+public final class SettingsFragment extends Fragment {
+
+    private static final String TAG = "SettingsFragment";
+
+    private FragmentSettingsBinding binding;
+    private SettingsViewModel viewModel;
+
+    private final ActivityResultLauncher<Intent> exportLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            this::onExportPicked);
+    private final ActivityResultLauncher<Intent> importLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            this::onImportPicked);
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater,
+                             @Nullable ViewGroup container,
+                             @Nullable Bundle savedInstanceState) {
+        binding = FragmentSettingsBinding.inflate(inflater, container, false);
+        return binding.getRoot();
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        viewModel = new ViewModelProvider(
+                this,
+                SettingsViewModel.factory(requireContext())
+        ).get(SettingsViewModel.class);
+
+        setupDisplayCurrencyDropdown();
+
+        binding.buttonAddAsset.setOnClickListener(v ->
+                NavHostFragment.findNavController(this)
+                        .navigate(R.id.action_settings_to_addAsset));
+
+        binding.buttonRecordManualEvent.setOnClickListener(v ->
+                NavHostFragment.findNavController(this)
+                        .navigate(R.id.action_settings_to_manualEvent));
+
+        binding.buttonExportData.setOnClickListener(v -> launchExport());
+        binding.buttonImportData.setOnClickListener(v -> launchImport());
+    }
+
+    private void setupDisplayCurrencyDropdown() {
+        Currency[] options = Currency.values();
+        String[] labels = new String[options.length];
+        for (int i = 0; i < options.length; i++) labels[i] = options[i].name();
+
+        // Passthrough filter: MaterialAutoCompleteTextView's default ArrayAdapter
+        // filters items by the current text, which collapses the list to whichever
+        // currency is already selected. We always want all 3 options visible.
+        binding.displayCurrencyDropdown.setAdapter(new PassthroughAdapter(
+                requireContext(), labels));
+
+        viewModel.displayCurrency().observe(getViewLifecycleOwner(), c -> {
+            if (c == null) return;
+            binding.displayCurrencyDropdown.setText(c.name(), false);
+        });
+
+        binding.displayCurrencyDropdown.setOnItemClickListener((parent, v, position, id) -> {
+            if (position < 0 || position >= options.length) return;
+            viewModel.setDisplayCurrency(options[position]);
+        });
+    }
+
+    // ─── Import / Export ────────────────────────────────────────────────────
+
+    private void launchExport() {
+        String fileName = getString(R.string.export_default_filename, LocalDate.now().toString());
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("application/json")
+                .putExtra(Intent.EXTRA_TITLE, fileName);
+        exportLauncher.launch(intent);
+    }
+
+    private void launchImport() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("*/*")
+                .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/json", "text/plain", "*/*"});
+        importLauncher.launch(intent);
+    }
+
+    private void onExportPicked(@NonNull ActivityResult result) {
+        Uri uri = (result.getData() != null) ? result.getData().getData() : null;
+        if (uri == null) return;
+        ServiceLocator sl = ServiceLocator.get(requireContext());
+        ImportExportRepository repo = sl.importExportRepository();
+        ExecutorService bridge = sl.viewExecutor();
+        bridge.execute(() -> {
+            try {
+                String json = repo.exportToJson().get();
+                int assetCount = countMatches(json, "\"ticker\"");
+                int eventCount = countMatches(json, "\"timestamp\"");
+                writeBytes(uri, json.getBytes(StandardCharsets.UTF_8));
+                postSnack(getString(R.string.export_success, assetCount, eventCount));
+            } catch (Exception e) {
+                Log.w(TAG, "export failed", e);
+                postSnack(getString(R.string.export_failed,
+                        e.getMessage() != null ? e.getMessage() : e.toString()));
+            }
+        });
+    }
+
+    private void onImportPicked(@NonNull ActivityResult result) {
+        Uri uri = (result.getData() != null) ? result.getData().getData() : null;
+        if (uri == null) return;
+        ServiceLocator sl = ServiceLocator.get(requireContext());
+        ImportExportRepository repo = sl.importExportRepository();
+        ExecutorService bridge = sl.viewExecutor();
+        bridge.execute(() -> {
+            try {
+                String json = readText(uri);
+                ImportResult r = repo.importFromJson(json).get();
+                postSnack(getString(R.string.import_success,
+                        r.assetsImported, r.eventsImported, r.eventsEnriched));
+            } catch (Exception e) {
+                Log.w(TAG, "import failed", e);
+                Throwable cause = (e.getCause() != null) ? e.getCause() : e;
+                postSnack(getString(R.string.import_failed,
+                        cause.getMessage() != null ? cause.getMessage() : cause.toString()));
+            }
+        });
+    }
+
+    private void writeBytes(@NonNull Uri uri, @NonNull byte[] bytes) throws Exception {
+        try (OutputStream out = requireContext().getContentResolver().openOutputStream(uri, "wt")) {
+            if (out == null) throw new IllegalStateException("Could not open " + uri);
+            out.write(bytes);
+            out.flush();
+        }
+    }
+
+    @NonNull
+    private String readText(@NonNull Uri uri) throws Exception {
+        try (InputStream in = requireContext().getContentResolver().openInputStream(uri)) {
+            if (in == null) throw new IllegalStateException("Could not open " + uri);
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                char[] buf = new char[4096];
+                int n;
+                while ((n = r.read(buf)) > 0) sb.append(buf, 0, n);
+            }
+            return sb.toString();
+        }
+    }
+
+    private static int countMatches(@NonNull String haystack, @NonNull String needle) {
+        int count = 0;
+        int from = 0;
+        while ((from = haystack.indexOf(needle, from)) >= 0) {
+            count++;
+            from += needle.length();
+        }
+        return count;
+    }
+
+    private void postSnack(@NonNull String text) {
+        if (!isAdded() || binding == null) return;
+        requireActivity().runOnUiThread(() ->
+                Snackbar.make(binding.getRoot(), text, Snackbar.LENGTH_LONG).show());
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        binding = null;
+    }
+
+    /** Disables the default per-keystroke filtering so all options remain visible. */
+    private static final class PassthroughAdapter extends ArrayAdapter<String> {
+        private final List<String> items;
+        private final Filter filter = new Filter() {
+            @Override
+            protected FilterResults performFiltering(@Nullable CharSequence constraint) {
+                FilterResults r = new FilterResults();
+                r.values = new ArrayList<>(items);
+                r.count = items.size();
+                return r;
+            }
+            @Override
+            protected void publishResults(@Nullable CharSequence constraint, FilterResults results) {
+                notifyDataSetChanged();
+            }
+        };
+
+        PassthroughAdapter(@NonNull android.content.Context ctx, @NonNull String[] labels) {
+            super(ctx, android.R.layout.simple_list_item_1, new ArrayList<>());
+            items = new ArrayList<>();
+            for (String s : labels) items.add(s);
+            addAll(items);
+        }
+
+        @NonNull
+        @Override
+        public Filter getFilter() {
+            return filter;
+        }
+    }
+}

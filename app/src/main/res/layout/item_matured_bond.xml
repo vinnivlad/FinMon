@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingVertical="12dp"
+    android:paddingHorizontal="16dp"
+    android:alpha="0.85"
+    android:background="?attr/selectableItemBackground">
+
+    <TextView
+        android:id="@+id/ticker"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:textAppearance="?attr/textAppearanceTitleSmall"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/pnl"
+        app:layout_constraintHorizontal_bias="0"
+        tools:text="UA4000187348 · UAH" />
+
+    <TextView
+        android:id="@+id/maturityLine"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:alpha="0.7"
+        android:layout_marginTop="2dp"
+        app:layout_constraintTop_toBottomOf="@id/ticker"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/principalLine"
+        app:layout_constraintHorizontal_bias="0"
+        tools:text="Matured 2026-04-20" />
+
+    <TextView
+        android:id="@+id/pnl"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textAppearance="?attr/textAppearanceTitleSmall"
+        android:textStyle="bold"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:text="+150.00 UAH"
+        tools:textColor="@color/pnl_positive" />
+
+    <TextView
+        android:id="@+id/principalLine"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:alpha="0.7"
+        android:layout_marginTop="2dp"
+        app:layout_constraintTop_toBottomOf="@id/pnl"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:text="10,000 + 1,250 coupons − 10,100 invested" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

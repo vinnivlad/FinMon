@@ -8,4 +8,8 @@
         android:id="@+id/chartFragment"
         android:title="@string/chart_title"
         android:icon="@android:drawable/ic_menu_recent_history" />
+    <item
+        android:id="@+id/settingsFragment"
+        android:title="@string/settings_title"
+        android:icon="@drawable/ic_settings" />
 </menu>

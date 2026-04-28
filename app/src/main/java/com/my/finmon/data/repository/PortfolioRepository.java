@@ -135,6 +135,21 @@ public final class PortfolioRepository {
     }
 
     /**
+     * Probe: is there already a DIVIDEND event (stock dividend or bond coupon) recorded
+     * against {@code sourceAssetId} on {@code date}? Used by the manual-entry form to
+     * refuse same-day duplicates — the auto-ingest path already dedupes via the same
+     * underlying check.
+     */
+    @NonNull
+    public Future<Boolean> hasIncomeOn(long sourceAssetId, @NonNull LocalDate date) {
+        return executor.submit(() -> {
+            LocalDateTime startOfDay = date.atStartOfDay();
+            LocalDateTime endExcl = startOfDay.plusDays(1);
+            return eventDao.findDividendOnDate(sourceAssetId, startOfDay, endExcl) != null;
+        });
+    }
+
+    /**
      * A coupon paid by a bond. Lands on the cash pile for {@code currency}, tagged with
      * {@code bondAssetId} as the income source so the bond valuator subtracts it from
      * accrued yield (see project_domain_model.md).
@@ -281,6 +296,155 @@ public final class PortfolioRepository {
     }
 
     /**
+     * Probe: has this bond already been redeemed (i.e. has a {@code MATURITY} event)?
+     * Backs the manual-entry redemption preview's "already redeemed" hint and is the
+     * same check {@link #recordBondMaturity} uses for idempotency.
+     */
+    @NonNull
+    public Future<Boolean> hasMaturityFor(long bondAssetId) {
+        return executor.submit(() -> eventDao.findMaturityForAsset(bondAssetId) != null);
+    }
+
+    /**
+     * Records a bond's principal repayment as a two-leg pair, written atomically:
+     * <ul>
+     *   <li>{@link EventType#OUT} on the bond asset — full open quantity at face value.
+     *       FIFO consumes the bond's lots; realized P&amp;L = (face − paid) × qty.</li>
+     *   <li>{@link EventType#MATURITY} on the bond's currency cash pile — amount =
+     *       openQty × face, with {@code incomeSourceAssetId = bondAssetId}.</li>
+     * </ul>
+     * Both stamped at 09:00 local on {@code atDate} — same offset as coupons, dodges
+     * the noon-trade collision in {@code computeTotalsSync}.
+     *
+     * <p>Idempotent: skipped if a MATURITY event for this bond already exists.
+     * Returns true if a new redemption was written, false if it was a no-op.
+     */
+    @NonNull
+    public Future<Boolean> recordBondMaturity(long bondAssetId, @NonNull LocalDate atDate) {
+        return executor.submit(() -> recordBondMaturitySync(bondAssetId, atDate));
+    }
+
+    /**
+     * Auto-ingest variant for {@link #recordBondMaturity}. Same behavior, separate name
+     * so the call sites in the sync worker read cleanly. Idempotent.
+     */
+    @NonNull
+    public Future<Boolean> ingestBondMaturity(long bondAssetId, @NonNull LocalDate atDate) {
+        return executor.submit(() -> recordBondMaturitySync(bondAssetId, atDate));
+    }
+
+    private boolean recordBondMaturitySync(long bondAssetId, LocalDate atDate) {
+        AssetEntity bond = assetDao.findById(bondAssetId);
+        if (bond == null || bond.type != AssetType.BOND) {
+            throw new IllegalArgumentException(
+                    "recordBondMaturity expects a BOND asset id, got " + bondAssetId);
+        }
+        if (bond.bondInitialPrice == null) {
+            throw new IllegalStateException(
+                    "Bond " + bond.ticker + " has no face value (bondInitialPrice)");
+        }
+
+        // Idempotent: at most one MATURITY per bond ever.
+        if (eventDao.findMaturityForAsset(bondAssetId) != null) return false;
+
+        LocalDateTime ts = atDate.atTime(9, 0);
+        FifoResult fifo = computeFifo(eventDao.getByAssetAsOf(bondAssetId, ts));
+        if (fifo.openQty.signum() <= 0) {
+            // Nothing to redeem — bond was already fully sold/matured by hand. Treat as
+            // no-op rather than error so the sync worker can keep running on stale data.
+            return false;
+        }
+
+        BigDecimal face = bond.bondInitialPrice;
+        BigDecimal qty = fifo.openQty;
+        BigDecimal cashAmount = qty.multiply(face);
+        AssetEntity cashAsset = requireCashAsset(bond.currency);
+
+        EventEntity bondLeg = new EventEntity();
+        bondLeg.timestamp = ts;
+        bondLeg.type = EventType.OUT;
+        bondLeg.assetId = bond.id;
+        bondLeg.amount = qty;
+        bondLeg.price = face;
+
+        EventEntity cashLeg = new EventEntity();
+        cashLeg.timestamp = ts;
+        cashLeg.type = EventType.MATURITY;
+        cashLeg.assetId = cashAsset.id;
+        cashLeg.amount = cashAmount;
+        cashLeg.price = BigDecimal.ONE;
+        cashLeg.incomeSourceAssetId = bondAssetId;
+
+        eventDao.insertTradePair(bondLeg, cashLeg);
+        return true;
+    }
+
+    /**
+     * All bonds with a recorded MATURITY event (i.e. fully redeemed) up to {@code asOf}.
+     * Each row aggregates its lifetime cash flows from the event log — no FX conversion,
+     * native currency only:
+     * <ul>
+     *   <li>{@code invested} = Σ purchase IN events × price.</li>
+     *   <li>{@code couponsReceived} = Σ DIVIDEND events with {@code incomeSourceAssetId}
+     *       pointing back to the bond.</li>
+     *   <li>{@code principalReturned} = MATURITY event amount.</li>
+     *   <li>{@code realizedPnl} = (couponsReceived + principalReturned) − invested.</li>
+     * </ul>
+     */
+    @NonNull
+    public Future<List<MaturedBond>> getMaturedBonds(@NonNull LocalDate asOf) {
+        return executor.submit(() -> {
+            LocalDateTime upTo = endOfDay(asOf);
+            List<MaturedBond> out = new ArrayList<>();
+            for (Long bondId : eventDao.findMaturedBondIds()) {
+                if (bondId == null) continue;
+                AssetEntity bond = assetDao.findById(bondId);
+                if (bond == null || bond.type != AssetType.BOND) continue;
+
+                EventEntity maturity = eventDao.findMaturityForAsset(bondId);
+                if (maturity == null || maturity.timestamp.isAfter(upTo)) continue;
+
+                BigDecimal invested = BigDecimal.ZERO;
+                List<EventEntity> bondEvents = eventDao.getByAssetAsOf(bondId, upTo);
+                for (EventEntity e : bondEvents) {
+                    if (e.type == EventType.IN) {
+                        invested = invested.add(e.amount.multiply(e.price));
+                    }
+                }
+
+                BigDecimal coupons = BigDecimal.ZERO;
+                for (EventEntity e : eventDao.getIncomeFromAssetAsOf(bondId, upTo)) {
+                    coupons = coupons.add(e.amount);
+                }
+
+                BigDecimal principal = maturity.amount;
+                BigDecimal pnl = coupons.add(principal).subtract(invested);
+
+                out.add(new MaturedBond(
+                        bond.id,
+                        bond.ticker,
+                        bond.name,
+                        bond.currency,
+                        // Redemption-event date — not the bond's contractual maturity,
+                        // since manual or off-schedule redemptions may differ.
+                        maturity.timestamp.toLocalDate(),
+                        invested,
+                        coupons,
+                        principal,
+                        pnl));
+            }
+            // Most recently matured first so it's near the section header on the screen.
+            out.sort((a, b) -> {
+                if (a.maturityDate == null && b.maturityDate == null) return 0;
+                if (a.maturityDate == null) return 1;
+                if (b.maturityDate == null) return -1;
+                return b.maturityDate.compareTo(a.maturityDate);
+            });
+            return out;
+        });
+    }
+
+    /**
      * Inserts the asset if no row exists with the same (ticker, currency); returns the id
      * of the existing or newly inserted row. The prototype's id is ignored.
      */
@@ -295,16 +459,25 @@ public final class PortfolioRepository {
     // ─── Queries ───────────────────────────────────────────────────────────
 
     /**
-     * All non-cash assets — what the "record trade" picker offers. Ordered by
-     * {@code type ASC, ticker ASC} to keep stocks and bonds grouped.
+     * All non-cash assets eligible for ongoing actions (trade, manual income, redemption).
+     * Bonds with a recorded {@link EventType#MATURITY} are filtered out — once redeemed
+     * they can't be traded, can't pay coupons, and can't be redeemed again. They live on
+     * in the matured-bonds UI section instead. Ordered by {@code type ASC, ticker ASC}.
      */
     @NonNull
     public Future<List<AssetEntity>> listTradeableAssets() {
         return executor.submit(() -> {
+            java.util.Set<Long> maturedIds = new java.util.HashSet<>();
+            for (Long id : eventDao.findMaturedBondIds()) {
+                if (id != null) maturedIds.add(id);
+            }
+
             List<AssetEntity> stocks = assetDao.findByType(AssetType.STOCK);
             List<AssetEntity> bonds = assetDao.findByType(AssetType.BOND);
             List<AssetEntity> all = new ArrayList<>(stocks.size() + bonds.size());
-            all.addAll(bonds);  // BOND sorts before STOCK alphabetically
+            for (AssetEntity b : bonds) {  // BOND sorts before STOCK alphabetically
+                if (!maturedIds.contains(b.id)) all.add(b);
+            }
             all.addAll(stocks);
             return all;
         });
@@ -326,8 +499,9 @@ public final class PortfolioRepository {
      *       value is converted via {@code ExchangeRateEntity} on {@code asOf}; each
      *       capital-flow cash event is converted via FX on the <em>event's</em> date
      *       (so FX drift itself shows up as market P&amp;L, by design).</li>
-     *   <li>{@code valueByDisplayCurrency} — the same {@code valueInBase} re-expressed
-     *       in each Currency for the header ribbon.</li>
+     *   <li>{@code valueByDisplayCurrency}/{@code investedByDisplayCurrency}/
+     *       {@code pnlByDisplayCurrency} — the same headline numbers re-expressed in each
+     *       Currency for the header ribbon and the user-display-currency picker.</li>
      *   <li>{@code bucketByCurrency} — per-native-currency view with no FX crossing.
      *       Each bucket shows how that currency's assets did in their own terms.</li>
      *   <li>{@code hasFxGaps} — true if any conversion fell back to {@code findOnOrBefore}
@@ -347,6 +521,64 @@ public final class PortfolioRepository {
     public Future<List<PortfolioValueSnapshotEntity>> getSnapshots(
             @NonNull LocalDate from, @NonNull LocalDate to) {
         return executor.submit(() -> portfolioValueDao.getRange(from, to));
+    }
+
+    /**
+     * Stored snapshots in {@code [from, to]} re-expressed in {@code displayCurrency} via
+     * stored FX rates (using {@code findOnOrBefore} per snapshot date). Snapshots are
+     * always written in {@link #BASE_CURRENCY}; this method is the render-layer
+     * conversion path for the chart's display-currency picker.
+     *
+     * <p>If no FX rate is on-or-before a snapshot's date, that point is still returned
+     * with {@code hasFxGaps=true} and the original BASE-currency numbers — the chart
+     * marker visually flags the gap and the line keeps continuity (better than dropping
+     * the point and leaving a hole).
+     */
+    /**
+     * Stored snapshots in {@code [from, to]} sliced to a single native {@code currency}
+     * — drives the per-currency charts on the breakdown pages. No FX crossing, so
+     * {@code hasFxGaps} is always false in the returned points (the FX gap flag on the
+     * row only matters for the base-currency view).
+     */
+    @NonNull
+    public Future<List<ConvertedSnapshot>> getSnapshotsForCurrency(
+            @NonNull LocalDate from, @NonNull LocalDate to, @NonNull Currency currency) {
+        return executor.submit(() -> {
+            List<PortfolioValueSnapshotEntity> rows = portfolioValueDao.getRange(from, to);
+            List<ConvertedSnapshot> out = new ArrayList<>(rows.size());
+            for (PortfolioValueSnapshotEntity s : rows) {
+                BigDecimal v;
+                BigDecimal i;
+                switch (currency) {
+                    case USD: v = s.valueUsd; i = s.investedUsd; break;
+                    case EUR: v = s.valueEur; i = s.investedEur; break;
+                    case UAH: v = s.valueUah; i = s.investedUah; break;
+                    default: throw new IllegalStateException("Unknown currency " + currency);
+                }
+                out.add(new ConvertedSnapshot(s.date, v, i, false));
+            }
+            return out;
+        });
+    }
+
+    @NonNull
+    public Future<List<ConvertedSnapshot>> getSnapshotsInDisplay(
+            @NonNull LocalDate from, @NonNull LocalDate to, @NonNull Currency displayCurrency) {
+        return executor.submit(() -> {
+            List<PortfolioValueSnapshotEntity> rows = portfolioValueDao.getRange(from, to);
+            List<ConvertedSnapshot> out = new ArrayList<>(rows.size());
+            for (PortfolioValueSnapshotEntity s : rows) {
+                BigDecimal v = convert(s.valueInBase, s.baseCurrency, displayCurrency, s.date);
+                BigDecimal i = convert(s.investedInBase, s.baseCurrency, displayCurrency, s.date);
+                boolean gap = s.hasFxGaps || v == null || i == null;
+                out.add(new ConvertedSnapshot(
+                        s.date,
+                        v != null ? v : s.valueInBase,
+                        i != null ? i : s.investedInBase,
+                        gap));
+            }
+            return out;
+        });
     }
 
     /**
@@ -571,14 +803,23 @@ public final class PortfolioRepository {
             bucketByCurrency.put(c, new NativeBucket(v, i, v.subtract(i), d, r, u));
         }
 
-        // Display ribbon — same baseValue re-expressed in each Currency.
+        // Display ribbon — same value/invested/pnl re-expressed in each Currency. Conversion
+        // is purely render-layer (UTC/timezone analogy): the underlying snapshot stays in
+        // BASE_CURRENCY; this map lets the UI pick which one gets the headline number.
         Map<Currency, BigDecimal> valueByDisplayCurrency = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> investedByDisplayCurrency = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> pnlByDisplayCurrency = new EnumMap<>(Currency.class);
         valueByDisplayCurrency.put(BASE_CURRENCY, valueInBase);
+        investedByDisplayCurrency.put(BASE_CURRENCY, investedInBase);
+        pnlByDisplayCurrency.put(BASE_CURRENCY, valueInBase.subtract(investedInBase));
         for (Currency c : Currency.values()) {
             if (c == BASE_CURRENCY) continue;
-            BigDecimal display = convert(valueInBase, BASE_CURRENCY, c, asOf);
-            if (display == null) { hasFxGaps = true; continue; }
-            valueByDisplayCurrency.put(c, display);
+            BigDecimal v = convert(valueInBase, BASE_CURRENCY, c, asOf);
+            BigDecimal i = convert(investedInBase, BASE_CURRENCY, c, asOf);
+            if (v == null || i == null) { hasFxGaps = true; continue; }
+            valueByDisplayCurrency.put(c, v);
+            investedByDisplayCurrency.put(c, i);
+            pnlByDisplayCurrency.put(c, v.subtract(i));
         }
 
         return new PortfolioTotals(
@@ -587,6 +828,8 @@ public final class PortfolioRepository {
                 investedInBase,
                 valueInBase.subtract(investedInBase),
                 valueByDisplayCurrency,
+                investedByDisplayCurrency,
+                pnlByDisplayCurrency,
                 bucketByCurrency,
                 hasFxGaps);
     }
@@ -724,8 +967,10 @@ public final class PortfolioRepository {
     private static BigDecimal sumCashNet(List<EventEntity> events) {
         BigDecimal net = BigDecimal.ZERO;
         for (EventEntity e : events) {
-            // DIVIDEND on a cash pile is a positive inflow, same direction as IN.
-            if (e.type == EventType.IN || e.type == EventType.DIVIDEND) {
+            // DIVIDEND and MATURITY on a cash pile are positive inflows, same as IN.
+            if (e.type == EventType.IN
+                    || e.type == EventType.DIVIDEND
+                    || e.type == EventType.MATURITY) {
                 net = net.add(e.amount);
             } else if (e.type == EventType.OUT) {
                 net = net.subtract(e.amount);
@@ -899,6 +1144,45 @@ public final class PortfolioRepository {
         }
     }
 
+    /**
+     * One matured bond — fully redeemed, has a {@code MATURITY} event. Aggregated lifetime
+     * cash flows in the bond's native currency. Drives the matured-bonds section under
+     * the active-holdings list. Identity: {@code realizedPnl == couponsReceived +
+     * principalReturned − invested}.
+     */
+    public static final class MaturedBond {
+        public final long assetId;
+        @NonNull public final String ticker;
+        @Nullable public final String name;
+        @NonNull public final Currency currency;
+        @Nullable public final LocalDate maturityDate;
+        @NonNull public final BigDecimal invested;
+        @NonNull public final BigDecimal couponsReceived;
+        @NonNull public final BigDecimal principalReturned;
+        @NonNull public final BigDecimal realizedPnl;
+
+        public MaturedBond(
+                long assetId,
+                @NonNull String ticker,
+                @Nullable String name,
+                @NonNull Currency currency,
+                @Nullable LocalDate maturityDate,
+                @NonNull BigDecimal invested,
+                @NonNull BigDecimal couponsReceived,
+                @NonNull BigDecimal principalReturned,
+                @NonNull BigDecimal realizedPnl) {
+            this.assetId = assetId;
+            this.ticker = ticker;
+            this.name = name;
+            this.currency = currency;
+            this.maturityDate = maturityDate;
+            this.invested = invested;
+            this.couponsReceived = couponsReceived;
+            this.principalReturned = principalReturned;
+            this.realizedPnl = realizedPnl;
+        }
+    }
+
     public static final class FifoResult {
         @NonNull public final BigDecimal openQty;
         @NonNull public final BigDecimal openCostBasis;
@@ -991,6 +1275,28 @@ public final class PortfolioRepository {
         }
     }
 
+    /**
+     * One stored snapshot re-expressed in a chosen display currency. Produced by
+     * {@link #getSnapshotsInDisplay} for the chart's display-currency picker.
+     */
+    public static final class ConvertedSnapshot {
+        @NonNull public final LocalDate date;
+        @NonNull public final BigDecimal value;
+        @NonNull public final BigDecimal invested;
+        public final boolean hasFxGaps;
+
+        public ConvertedSnapshot(
+                @NonNull LocalDate date,
+                @NonNull BigDecimal value,
+                @NonNull BigDecimal invested,
+                boolean hasFxGaps) {
+            this.date = date;
+            this.value = value;
+            this.invested = invested;
+            this.hasFxGaps = hasFxGaps;
+        }
+    }
+
     /** Immutable snapshot of one open lot — what BondValuator needs per-lot. */
     public static final class OpenLot {
         @NonNull public final BigDecimal qty;
@@ -1019,6 +1325,10 @@ public final class PortfolioRepository {
         @NonNull public final BigDecimal pnlInBase;
         /** Same {@code valueInBase} re-expressed in each Currency — for the display ribbon. */
         @NonNull public final Map<Currency, BigDecimal> valueByDisplayCurrency;
+        /** {@code investedInBase} re-expressed in each Currency. */
+        @NonNull public final Map<Currency, BigDecimal> investedByDisplayCurrency;
+        /** {@code pnlInBase} re-expressed in each Currency. */
+        @NonNull public final Map<Currency, BigDecimal> pnlByDisplayCurrency;
         /** Per-native-currency view with no FX crossing — for the future breakdown screen. */
         @NonNull public final Map<Currency, NativeBucket> bucketByCurrency;
         /** True if any FX conversion couldn't find a rate; UI shows a subtle hint. */
@@ -1030,6 +1340,8 @@ public final class PortfolioRepository {
                 @NonNull BigDecimal investedInBase,
                 @NonNull BigDecimal pnlInBase,
                 @NonNull Map<Currency, BigDecimal> valueByDisplayCurrency,
+                @NonNull Map<Currency, BigDecimal> investedByDisplayCurrency,
+                @NonNull Map<Currency, BigDecimal> pnlByDisplayCurrency,
                 @NonNull Map<Currency, NativeBucket> bucketByCurrency,
                 boolean hasFxGaps) {
             this.baseCurrency = baseCurrency;
@@ -1037,6 +1349,8 @@ public final class PortfolioRepository {
             this.investedInBase = investedInBase;
             this.pnlInBase = pnlInBase;
             this.valueByDisplayCurrency = valueByDisplayCurrency;
+            this.investedByDisplayCurrency = investedByDisplayCurrency;
+            this.pnlByDisplayCurrency = pnlByDisplayCurrency;
             this.bucketByCurrency = bucketByCurrency;
             this.hasFxGaps = hasFxGaps;
         }
