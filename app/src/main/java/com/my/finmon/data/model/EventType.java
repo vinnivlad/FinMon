@@ -44,5 +44,32 @@ public enum EventType {
      * collide on the {@code (incomeSourceAssetId, date)} dedup key. At most one
      * MATURITY event per bond ever — see {@code EventDao.findMaturityForAsset}.
      */
-    MATURITY
+    MATURITY,
+
+    /**
+     * Outgoing leg of an in-brokerage cash conversion (e.g. EUR → USD). Lives on the
+     * source {@code CASH_*} pile. Paired with a {@link #CONVERSION_IN} on the target
+     * cash pile at the same timestamp, inserted atomically via
+     * {@code EventDao.insertTradePair}. {@code amount} is the amount taken out of the
+     * source currency; {@code price} = 1; {@code incomeSourceAssetId} is null.
+     *
+     * <p>Distinct from {@link #OUT} so the per-currency capital walk can recognise
+     * conversions by type rather than relying on timestamp pairing — that lets a
+     * conversion happening at the same instant as a stock trade not be misclassified
+     * as a trade leg. From a per-currency invested perspective: this DECREASES the
+     * source currency's invested capital. The paired {@link #CONVERSION_IN} INCREASES
+     * the target currency's invested capital. Base-currency invested stays roughly
+     * flat (modulo FX drift between the two FX-at-event-date conversions, which is
+     * the project's design — see {@code core_goal}).
+     */
+    CONVERSION_OUT,
+
+    /**
+     * Incoming leg of an in-brokerage cash conversion. See {@link #CONVERSION_OUT}.
+     * Lives on the target {@code CASH_*} pile. {@code amount} is the amount received
+     * in the target currency. The implicit FX rate of the conversion is
+     * {@code amount_in / amount_out}; we don't store it separately because each leg
+     * is in its own currency.
+     */
+    CONVERSION_IN
 }

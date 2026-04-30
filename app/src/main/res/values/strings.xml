@@ -39,6 +39,14 @@
     <string name="field_trade_date">Trade date</string>
     <string name="trade_no_assets">No tradeable assets yet. Add an asset first from the + menu.</string>
     <string name="error_invalid_number">Invalid number</string>
+    <!-- Cash conversion mode (third option in the side dropdown) -->
+    <string name="trade_side_convert">CONVERT</string>
+    <string name="field_from_currency">From currency</string>
+    <string name="field_from_amount">From amount</string>
+    <string name="field_to_currency">To currency</string>
+    <string name="field_to_amount">To amount</string>
+    <string name="field_conversion_help">Records an in-brokerage cash conversion (no market trade). Implicit FX = to / from.</string>
+    <string name="error_same_currency">From and To must be different currencies</string>
 
     <!-- Portfolio totals card -->
     <string name="totals_card_label">Portfolio value</string>
@@ -60,7 +68,7 @@
     <string name="trade_row_ticker_line">%1$s · %2$s</string>
     <string name="trade_row_qty_line_full">%1$s · %2$s @ %3$s</string>
     <string name="trade_row_qty_line_partial">%1$s · %2$s @ %3$s · holding %4$s</string>
-    <string name="trade_row_breakdown">Realized %1$s · Unrealized %2$s</string>
+    <string name="trade_row_breakdown">Realized %1$s · Unrealized %2$s · Dividends %3$s</string>
 
     <!-- Chart screen -->
     <string name="chart_title">Chart</string>
@@ -131,6 +139,22 @@
     <string name="settings_action_add_asset">Add asset</string>
     <string name="settings_action_manual_event">Record dividend or coupon</string>
 
+    <!-- Tax settings -->
+    <string name="settings_section_taxes">Taxes</string>
+    <string name="settings_taxes_help">Applied to auto-ingested stock dividends and bond coupons. Per-asset overrides win when set. Forward-only: past income stays at the rate in force when it was recorded.</string>
+    <string name="settings_default_stock_tax_label">Default stock tax %</string>
+    <string name="settings_default_bond_tax_label">Default bond tax %</string>
+    <string name="settings_action_tax_overrides">Per-asset overrides…</string>
+    <string name="settings_tax_invalid">Tax % must be between 0 and 100</string>
+    <string name="settings_tax_saved">Saved</string>
+
+    <!-- Per-asset tax overrides screen -->
+    <string name="tax_overrides_title">Per-asset tax rates</string>
+    <string name="tax_overrides_help">Override the type default for an individual asset. Leave blank to use the default.</string>
+    <string name="tax_overrides_empty">No assets to configure yet.</string>
+    <string name="tax_overrides_default_hint">default %1$s%%</string>
+    <string name="tax_overrides_field_hint">%</string>
+
     <!-- Manual event screen -->
     <string name="manual_event_title">Record dividend, coupon, or redemption</string>
     <string name="manual_event_help">Use this when auto-ingest didn\'t reach an event — off-NBU bonds, special distributions, manual bond redemptions, or very old history.</string>
@@ -161,6 +185,7 @@
     <!-- Startup sync overlay -->
     <string name="startup_initializing">Initializing…</string>
     <string name="startup_starting">Starting sync…</string>
+    <string name="startup_stage_importing">Importing data…</string>
     <string name="startup_stage_stock_prices">Fetching prices: %1$s (%2$d/%3$d)</string>
     <string name="startup_stage_stock_prices_indeterminate">Fetching prices…</string>
     <string name="startup_stage_fx">Updating exchange rates…</string>

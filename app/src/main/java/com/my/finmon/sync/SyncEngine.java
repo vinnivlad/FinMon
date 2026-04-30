@@ -200,33 +200,47 @@ public final class SyncEngine {
         PortfolioRepository repo = sl.portfolioRepository();
 
         // Walk latestSnapshot+1..yesterday and write a snapshot for each missing date.
+        // Cold start (no snapshots): bootstrap from the user's earliest event so a full
+        // import gets full history. Falls back to yesterday-7 only if there are no events
+        // at all (fresh install, no data).
         LocalDate latest = snapDao.latestDate();
-        LocalDate from = (latest != null) ? latest.plusDays(1) : yesterday.minusDays(BOOTSTRAP_DAYS);
+        LocalDate from;
+        if (latest != null) {
+            from = latest.plusDays(1);
+        } else {
+            java.time.LocalDateTime earliest = sl.database().eventDao().earliestTimestamp();
+            from = (earliest != null)
+                    ? earliest.toLocalDate()
+                    : yesterday.minusDays(BOOTSTRAP_DAYS);
+        }
 
-        long totalDays = from.isAfter(yesterday) ? 0 : (yesterday.toEpochDay() - from.toEpochDay() + 1);
-        int idx = 0;
-        for (LocalDate d = from; !d.isAfter(yesterday); d = d.plusDays(1)) {
-            idx++;
-            cb.onProgress(Stage.SNAPSHOTS, idx, (int) totalDays, d.toString());
+        // Batch path: load events / prices / FX once, compute each day's snapshot from
+        // the in-memory cache. Per-day round-trips were the O(N²) bottleneck on large
+        // back-fills (post-import).
+        if (!from.isAfter(yesterday)) {
             try {
-                PortfolioTotals t = repo.getPortfolioTotals(d).get();
-                snapDao.upsert(toSnapshot(d, t));
+                repo.rebuildSnapshotsBatch(from, yesterday, (current, total, label) ->
+                        cb.onProgress(Stage.SNAPSHOTS, current, total, label)).get();
             } catch (Exception e) {
-                Log.w(TAG, "snapshot failed for " + d, e);
+                Log.w(TAG, "batch snapshot rebuild failed", e);
             }
         }
 
         // Re-compute any existing gappy snapshots — FX backfill may have filled holes.
         List<PortfolioValueSnapshotEntity> gappy = snapDao.findGappyUpTo(yesterday);
-        for (PortfolioValueSnapshotEntity old : gappy) {
-            try {
-                PortfolioTotals t = repo.getPortfolioTotals(old.date).get();
-                if (!t.hasFxGaps) {
-                    snapDao.upsert(toSnapshot(old.date, t));
-                    Log.i(TAG, "snapshot un-gapped for " + old.date);
+        if (!gappy.isEmpty()) {
+            // Cheap-enough to reuse the per-day path here; gappy lists are typically small
+            // and short-lived (each FX backfill clears them).
+            for (PortfolioValueSnapshotEntity old : gappy) {
+                try {
+                    PortfolioTotals t = repo.getPortfolioTotals(old.date).get();
+                    if (!t.hasFxGaps) {
+                        snapDao.upsert(toSnapshot(old.date, t));
+                        Log.i(TAG, "snapshot un-gapped for " + old.date);
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "snapshot re-compute failed for " + old.date, e);
                 }
-            } catch (Exception e) {
-                Log.w(TAG, "snapshot re-compute failed for " + old.date, e);
             }
         }
     }

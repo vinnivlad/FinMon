@@ -75,6 +75,16 @@ public final class FakeStockPriceDao implements StockPriceDao {
     }
 
     @Override
+    public List<StockPriceEntity> getAll() {
+        List<StockPriceEntity> out = new ArrayList<>(rows.values());
+        out.sort((a, b) -> {
+            int byTicker = a.ticker.compareTo(b.ticker);
+            return byTicker != 0 ? byTicker : a.date.compareTo(b.date);
+        });
+        return out;
+    }
+
+    @Override
     public void deleteAll() {
         rows.clear();
     }

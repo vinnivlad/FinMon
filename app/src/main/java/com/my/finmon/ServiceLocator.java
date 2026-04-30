@@ -128,7 +128,8 @@ public final class ServiceLocator {
                 database.stockPriceDao(),
                 database.exchangeRateDao(),
                 database.portfolioValueDao(),
-                ioExecutor);
+                ioExecutor,
+                userPreferences);
 
         this.marketDataRepository = new MarketDataRepository(
                 yahooClient,
@@ -147,6 +148,7 @@ public final class ServiceLocator {
                 database.portfolioValueDao(),
                 portfolioRepository,
                 marketDataRepository,
+                userPreferences,
                 viewExecutor,
                 moshi);
 

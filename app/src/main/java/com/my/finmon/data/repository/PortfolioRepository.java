@@ -1,5 +1,7 @@
 package com.my.finmon.data.repository;
 
+import android.util.Log;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -29,8 +31,13 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
@@ -60,6 +67,7 @@ public final class PortfolioRepository {
     private final ExchangeRateDao exchangeRateDao;
     private final PortfolioValueDao portfolioValueDao;
     private final ExecutorService executor;
+    private final TaxRates taxRates;
 
     public PortfolioRepository(
             @NonNull AssetDao assetDao,
@@ -68,12 +76,44 @@ public final class PortfolioRepository {
             @NonNull ExchangeRateDao exchangeRateDao,
             @NonNull PortfolioValueDao portfolioValueDao,
             @NonNull ExecutorService executor) {
+        this(assetDao, eventDao, stockPriceDao, exchangeRateDao, portfolioValueDao,
+                executor, TaxRates.ZERO);
+    }
+
+    public PortfolioRepository(
+            @NonNull AssetDao assetDao,
+            @NonNull EventDao eventDao,
+            @NonNull StockPriceDao stockPriceDao,
+            @NonNull ExchangeRateDao exchangeRateDao,
+            @NonNull PortfolioValueDao portfolioValueDao,
+            @NonNull ExecutorService executor,
+            @NonNull TaxRates taxRates) {
         this.assetDao = assetDao;
         this.eventDao = eventDao;
         this.stockPriceDao = stockPriceDao;
         this.exchangeRateDao = exchangeRateDao;
         this.portfolioValueDao = portfolioValueDao;
         this.executor = executor;
+        this.taxRates = taxRates;
+    }
+
+    /**
+     * Effective tax rate for an asset (percent — 15 means 15%). Per-asset
+     * override wins; falls back to the user's default for the asset's type.
+     */
+    @NonNull
+    private BigDecimal effectiveTaxRatePct(@NonNull AssetEntity asset) {
+        if (asset.taxRatePct != null) return asset.taxRatePct;
+        return taxRates.defaultRate(asset.type);
+    }
+
+    /** {@code gross × (1 − rate/100)}. Returns gross unchanged when rate is null/zero. */
+    @NonNull
+    private static BigDecimal applyTax(@NonNull BigDecimal gross, @NonNull BigDecimal taxPct) {
+        if (taxPct.signum() == 0) return gross;
+        BigDecimal multiplier = BigDecimal.ONE.subtract(
+                taxPct.divide(BigDecimal.valueOf(100), MC));
+        return gross.multiply(multiplier, MC);
     }
 
     // ─── Commands ──────────────────────────────────────────────────────────
@@ -132,6 +172,66 @@ public final class PortfolioRepository {
             @NonNull BigDecimal amount,
             @NonNull LocalDateTime timestamp) {
         return executor.submit(() -> writeCashEvent(currency, EventType.OUT, amount, timestamp, null));
+    }
+
+    /**
+     * Records an in-brokerage cash conversion (e.g. EUR → USD). Two events written
+     * atomically via {@link EventDao#insertTradePair}: a {@link EventType#CONVERSION_OUT}
+     * on the source cash pile and a {@link EventType#CONVERSION_IN} on the target
+     * cash pile, both at {@code timestamp}.
+     *
+     * <p>The pair preserves the actual FX rate the user got from the brokerage — we
+     * store {@code fromAmount} and {@code toAmount} as the user supplied them rather
+     * than deriving one from the other via a market rate. Brokerage spread shows up
+     * as a small FX P&amp;L drift, which is correct.
+     *
+     * <p>Throws if the two currencies match — that's a no-op the caller should reject
+     * before submitting.
+     */
+    public Future<?> recordCashConversion(
+            @NonNull Currency fromCurrency,
+            @NonNull BigDecimal fromAmount,
+            @NonNull Currency toCurrency,
+            @NonNull BigDecimal toAmount,
+            @NonNull LocalDateTime timestamp) {
+        return executor.submit(() -> {
+            if (fromCurrency == toCurrency) {
+                throw new IllegalArgumentException(
+                        "Cash conversion requires two different currencies, got " + fromCurrency);
+            }
+            if (fromAmount.signum() <= 0 || toAmount.signum() <= 0) {
+                throw new IllegalArgumentException("Conversion amounts must be positive");
+            }
+            AssetEntity fromCash = requireCashAsset(fromCurrency);
+            AssetEntity toCash = requireCashAsset(toCurrency);
+
+            // Refuse to drain a cash pile below zero. Balance is evaluated as-of the
+            // recording timestamp so back-dated conversions are validated against the
+            // historical pile, not today's. Re-importing or fixing data later remains
+            // open via the same recording path.
+            BigDecimal balance = sumCashNet(eventDao.getByAssetAsOf(fromCash.id, timestamp));
+            if (fromAmount.compareTo(balance) > 0) {
+                throw new IllegalArgumentException(
+                        "Insufficient " + fromCurrency + " balance: have "
+                                + balance.toPlainString() + ", need " + fromAmount.toPlainString());
+            }
+
+            EventEntity outLeg = new EventEntity();
+            outLeg.timestamp = timestamp;
+            outLeg.type = EventType.CONVERSION_OUT;
+            outLeg.assetId = fromCash.id;
+            outLeg.amount = fromAmount;
+            outLeg.price = BigDecimal.ONE;
+
+            EventEntity inLeg = new EventEntity();
+            inLeg.timestamp = timestamp;
+            inLeg.type = EventType.CONVERSION_IN;
+            inLeg.assetId = toCash.id;
+            inLeg.amount = toAmount;
+            inLeg.price = BigDecimal.ONE;
+
+            eventDao.insertTradePair(outLeg, inLeg);
+        });
     }
 
     /**
@@ -240,7 +340,10 @@ public final class PortfolioRepository {
             FifoResult fifo = computeFifo(eventDao.getByAssetAsOf(stockAssetId, endOfDay(d.at.toLocalDate())));
             if (fifo.openQty.signum() <= 0) continue;  // we didn't hold the stock then
 
-            BigDecimal cash = fifo.openQty.multiply(d.perShareAmount);
+            // Yahoo gives gross dividends; user actually receives net of withholding tax.
+            // Storing net keeps the cash pile aligned with the brokerage account.
+            BigDecimal gross = fifo.openQty.multiply(d.perShareAmount);
+            BigDecimal cash = applyTax(gross, effectiveTaxRatePct(stock));
             writeCashEvent(stock.currency, EventType.DIVIDEND, cash, d.at, stockAssetId);
             written++;
         }
@@ -288,7 +391,10 @@ public final class PortfolioRepository {
                     bondAssetId, endOfDay(c.at.toLocalDate())));
             if (fifo.openQty.signum() <= 0) continue;  // didn't hold the bond then
 
-            BigDecimal cash = fifo.openQty.multiply(c.perShareAmount);
+            // UAH OVDPs are tax-exempt by default (defaultBondTaxPct = 0); applyTax is
+            // a no-op in that case. Per-asset override still wins for taxable bonds.
+            BigDecimal gross = fifo.openQty.multiply(c.perShareAmount);
+            BigDecimal cash = applyTax(gross, effectiveTaxRatePct(bond));
             writeCashEvent(bond.currency, EventType.DIVIDEND, cash, c.at, bondAssetId);
             written++;
         }
@@ -442,6 +548,16 @@ public final class PortfolioRepository {
             });
             return out;
         });
+    }
+
+    /**
+     * Sets a per-asset tax-rate override. Pass {@code null} to clear and fall back to the
+     * type default. Forward-only: existing dividend/coupon events are not rewritten — past
+     * income was taxed at the rate in force when ingested.
+     */
+    @NonNull
+    public Future<?> setAssetTaxRate(long assetId, @Nullable BigDecimal ratePct) {
+        return executor.submit(() -> assetDao.updateTaxRate(assetId, ratePct));
     }
 
     /**
@@ -685,8 +801,19 @@ public final class PortfolioRepository {
             List<EventEntity> events = eventDao.getByAssetAsOf(asset.id, winEndDT);
             List<LotTimeline> lots = buildLotTimelines(events);
 
+            // Per-lot dividend attribution. For every income event (DIVIDEND/MATURITY)
+            // tagged with this asset as source within the window, split its amount across
+            // the lots open at that moment by qty share. Returns map keyed by IN-event id.
+            // The previous lifetime-attribution maps (at window-start and window-end)
+            // were only needed by the synthetic bond accrual formula — gone now that
+            // bonds value at face × qty.
+            List<EventEntity> income = eventDao.getIncomeFromAssetAsOf(asset.id, winEndDT);
+            Map<Long, BigDecimal> dividendsByLotId = attributeIncomeToLots(
+                    events, income, windowStart, windowEnd);
+
             for (LotTimeline lot : lots) {
-                TradeRow row = computeRowForLot(asset, lot, windowStart, windowEnd);
+                BigDecimal lotDivs = dividendsByLotId.getOrDefault(lot.inEvent.id, BigDecimal.ZERO);
+                TradeRow row = computeRowForLot(asset, lot, windowStart, windowEnd, lotDivs);
                 if (row != null) out.add(row);
             }
         }
@@ -695,9 +822,101 @@ public final class PortfolioRepository {
         return out;
     }
 
+    /**
+     * Walks the asset's own events + income events tagged from it, in a single
+     * chronological stream, and distributes each in-window income event across the
+     * lots open at that moment by qty pro-rata. At equal timestamps we process
+     * IN/SPLIT first, then INCOME, then OUT — so the final coupon paid alongside a
+     * bond's redemption sees the pre-OUT qty (the user holds the bond at the moment
+     * of payment, redemption happens after).
+     */
+    @NonNull
+    private Map<Long, BigDecimal> attributeIncomeToLots(
+            @NonNull List<EventEntity> bondEvents,
+            @NonNull List<EventEntity> incomeEvents,
+            @NonNull LocalDate windowStart,
+            @NonNull LocalDate windowEnd) {
+        Map<Long, BigDecimal> attribution = new HashMap<>();
+        if (incomeEvents.isEmpty()) return attribution;
+
+        LocalDateTime winStart = windowStart.atStartOfDay();
+        LocalDateTime winEnd = endOfDay(windowEnd);
+
+        // Merge with sort key (timestamp, prio). Lower prio runs first at ties.
+        // 0 = IN/SPLIT (qty change before income), 1 = income, 2 = OUT.
+        List<MergedEvent> merged = new ArrayList<>(bondEvents.size() + incomeEvents.size());
+        for (EventEntity e : bondEvents) {
+            int prio;
+            if (e.type == EventType.IN || e.type == EventType.SPLIT) prio = 0;
+            else if (e.type == EventType.OUT) prio = 2;
+            else continue;
+            merged.add(new MergedEvent(e, prio, false));
+        }
+        for (EventEntity e : incomeEvents) {
+            merged.add(new MergedEvent(e, 1, true));
+        }
+        merged.sort(Comparator
+                .comparing((MergedEvent m) -> m.event.timestamp)
+                .thenComparingInt(m -> m.prio)
+                .thenComparingLong(m -> m.event.id));
+
+        // Lot map is insertion-ordered so OUT consumes oldest-first (FIFO match with
+        // computeFifo / buildLotTimelines).
+        java.util.LinkedHashMap<Long, BigDecimal> openByLotId = new java.util.LinkedHashMap<>();
+
+        for (MergedEvent m : merged) {
+            EventEntity e = m.event;
+            if (m.income) {
+                // Outside-window income still affects the running map's qty (it doesn't,
+                // actually — income on cash doesn't move bond qty), but we still need to
+                // skip attributing for events outside the window.
+                if (e.timestamp.isBefore(winStart) || e.timestamp.isAfter(winEnd)) continue;
+                BigDecimal totalOpen = BigDecimal.ZERO;
+                for (BigDecimal v : openByLotId.values()) totalOpen = totalOpen.add(v);
+                if (totalOpen.signum() <= 0) continue;
+                for (Map.Entry<Long, BigDecimal> entry : openByLotId.entrySet()) {
+                    BigDecimal share = e.amount.multiply(entry.getValue()).divide(totalOpen, MC);
+                    attribution.merge(entry.getKey(), share, BigDecimal::add);
+                }
+            } else if (e.type == EventType.IN) {
+                openByLotId.put(e.id, e.amount);
+            } else if (e.type == EventType.OUT) {
+                BigDecimal remaining = e.amount;
+                java.util.Iterator<Map.Entry<Long, BigDecimal>> it = openByLotId.entrySet().iterator();
+                while (remaining.signum() > 0 && it.hasNext()) {
+                    Map.Entry<Long, BigDecimal> head = it.next();
+                    BigDecimal headQty = head.getValue();
+                    BigDecimal consume = headQty.min(remaining);
+                    BigDecimal newQty = headQty.subtract(consume);
+                    remaining = remaining.subtract(consume);
+                    if (newQty.signum() == 0) it.remove();
+                    else head.setValue(newQty);
+                }
+            } else if (e.type == EventType.SPLIT) {
+                BigDecimal ratio = e.amount;
+                if (ratio.signum() <= 0) continue;
+                openByLotId.replaceAll((k, v) -> v.multiply(ratio));
+            }
+        }
+
+        return attribution;
+    }
+
+    private static final class MergedEvent {
+        final EventEntity event;
+        final int prio;
+        final boolean income;
+        MergedEvent(EventEntity event, int prio, boolean income) {
+            this.event = event;
+            this.prio = prio;
+            this.income = income;
+        }
+    }
+
     @Nullable
     private TradeRow computeRowForLot(
-            AssetEntity asset, LotTimeline lot, LocalDate windowStart, LocalDate windowEnd) {
+            AssetEntity asset, LotTimeline lot, LocalDate windowStart, LocalDate windowEnd,
+            @NonNull BigDecimal windowDividends) {
         LocalDateTime lotAcquiredAt = lot.inEvent.timestamp;
         LocalDate lotDate = lotAcquiredAt.toLocalDate();
         BigDecimal lotPrice = lot.inEvent.price;
@@ -720,22 +939,25 @@ public final class PortfolioRepository {
             return null;
         }
 
-        // Baseline per-unit value — purchase price for in-window lots, window-start price otherwise.
-        BigDecimal baselineUnit = lotInWindow
-                ? lotPrice
-                : perUnitValueAt(asset, windowStart, lotAcquiredAt, origQty);
-        if (baselineUnit == null) {
-            // No price on-or-before window start (stock never synced that far back) — fall
-            // back to purchase price so the row degrades to total-since-purchase P&L rather
-            // than vanishing.
-            baselineUnit = lotPrice;
-        }
-
+        // Realized P&L: lifetime-anchored to the lot's purchase price for every sell or
+        // maturity in the window. This matches brokerage statements — a bond bought in
+        // 2023 and matured in 2025 reports its full premium loss in 2025's view, not
+        // split with an earlier "pre-window unrealized" bucket the user can't see.
         BigDecimal realized = BigDecimal.ZERO;
         for (Consumption c : lot.consumptions) {
             if (c.consumedAt.toLocalDate().isBefore(windowStart)) continue;
-            realized = realized.add(c.qty.multiply(c.sellPrice.subtract(baselineUnit)));
+            realized = realized.add(c.qty.multiply(c.sellPrice.subtract(lotPrice)));
         }
+
+        // Unrealized: window-anchored mark-to-market for any qty still open at window end.
+        // Baseline is the lot's purchase price for in-window lots, the window-start mark
+        // otherwise. For BOND the mark is constant at face — so a pre-window bond holds
+        // unrealized = 0 in the window, while an in-window bond purchase shows
+        // (face − purchase) × qty = −premium (constant from purchase forward).
+        BigDecimal baselineUnit = lotInWindow
+                ? lotPrice
+                : perUnitValueAt(asset, windowStart, lotAcquiredAt, origQty);
+        if (baselineUnit == null) baselineUnit = lotPrice;
 
         BigDecimal unrealized = BigDecimal.ZERO;
         if (remainingQtyE.signum() > 0) {
@@ -745,15 +967,18 @@ public final class PortfolioRepository {
             }
         }
 
+        BigDecimal total = realized.add(unrealized).add(windowDividends);
         return new TradeRow(
                 asset.id, asset.ticker, asset.type, asset.currency,
                 lotAcquiredAt, origQty, remainingQtyE, lotPrice,
-                realized, unrealized, realized.add(unrealized));
+                realized, unrealized, windowDividends, total);
     }
 
     /**
      * Per-unit value of {@code asset} on {@code date}. STOCK uses the close on-or-before;
-     * BOND applies the coupon-bond formula on a synthetic single-lot ({@link BondValuator}).
+     * BOND uses {@link AssetEntity#bondInitialPrice} (face) — bonds have no real
+     * mid-life market price in this app, and the broker-aligned model holds them at
+     * face during the lifetime; premium/discount surfaces as cost-vs-face P&amp;L.
      * Returns null only when STOCK has no price on-or-before the date (never-synced ticker).
      */
     @Nullable
@@ -764,12 +989,7 @@ public final class PortfolioRepository {
             return q == null ? null : q.closePrice;
         }
         if (asset.type == AssetType.BOND) {
-            LocalDateTime asOf = endOfDay(date);
-            List<EventEntity> coupons = eventDao.getIncomeFromAssetAsOf(asset.id, asOf);
-            OpenLot synthetic = new OpenLot(origQty, BigDecimal.ZERO, lotAcquiredAt);
-            BigDecimal total = BondValuator.valueOf(
-                    asset, Collections.singletonList(synthetic), coupons, asOf);
-            return total.divide(origQty, MC);
+            return asset.bondInitialPrice;
         }
         return null;
     }
@@ -815,6 +1035,28 @@ public final class PortfolioRepository {
                     dividends = dividends.add(ev.amount);
                     continue;
                 }
+
+                // Currency conversions count as per-currency capital movement (the
+                // user did move money into / out of this currency). They bypass the
+                // trade-leg detection — a conversion can share a timestamp with a
+                // stock trade and shouldn't be misclassified.
+                if (ev.type == EventType.CONVERSION_IN) {
+                    capital = capital.add(ev.amount);
+                    BigDecimal base = convert(
+                            ev.amount, cashAsset.currency, BASE_CURRENCY, ev.timestamp.toLocalDate());
+                    if (base == null) hasFxGaps = true;
+                    else investedInBase = investedInBase.add(base);
+                    continue;
+                }
+                if (ev.type == EventType.CONVERSION_OUT) {
+                    capital = capital.subtract(ev.amount);
+                    BigDecimal base = convert(
+                            ev.amount, cashAsset.currency, BASE_CURRENCY, ev.timestamp.toLocalDate());
+                    if (base == null) hasFxGaps = true;
+                    else investedInBase = investedInBase.subtract(base);
+                    continue;
+                }
+
                 if (ev.incomeSourceAssetId != null) continue;  // legacy income rows, defensive
                 if (eventDao.countNonCashEventsAt(ev.timestamp) > 0) continue;  // trade leg
                 BigDecimal signed = (ev.type == EventType.IN) ? ev.amount : ev.amount.negate();
@@ -898,6 +1140,301 @@ public final class PortfolioRepository {
     }
 
     /**
+     * Batch-rebuilds portfolio snapshots for {@code [from, to]}. Loads all events,
+     * prices, and FX rates once at the start, then computes each day's snapshot from
+     * in-memory state — eliminates the per-day DAO round-trips that made the per-day
+     * loop slow down with history depth.
+     *
+     * <p>Mirrors {@link #computeTotalsSync} exactly; the two MUST stay in sync. The
+     * single-call variant is kept for ad-hoc UI queries (Holdings header, Chart's
+     * right-edge live point).
+     *
+     * <p>Progress is reported via {@code cb} once per day. Per-day failures are logged
+     * and swallowed so one bad day doesn't abort the whole rebuild.
+     */
+    @NonNull
+    public Future<Integer> rebuildSnapshotsBatch(
+            @NonNull LocalDate from,
+            @NonNull LocalDate to,
+            @NonNull BatchSnapshotProgress cb) {
+        return executor.submit(() -> rebuildSnapshotsBatchSync(from, to, cb));
+    }
+
+    @FunctionalInterface
+    public interface BatchSnapshotProgress {
+        void onProgress(int current, int total, @NonNull String label);
+    }
+
+    private int rebuildSnapshotsBatchSync(
+            LocalDate from, LocalDate to, BatchSnapshotProgress cb) {
+        BulkSnapshotData bulk = loadBulkSnapshotData();
+        int totalDays = (int) (to.toEpochDay() - from.toEpochDay() + 1);
+        if (totalDays <= 0) return 0;
+        int idx = 0;
+        int written = 0;
+        for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+            idx++;
+            cb.onProgress(idx, totalDays, d.toString());
+            try {
+                PortfolioTotals t = computeTotalsFromBulk(d, bulk);
+                portfolioValueDao.upsert(buildSnapshotEntity(d, t));
+                written++;
+            } catch (Exception e) {
+                Log.w("PortfolioRepository", "snapshot failed for " + d, e);
+            }
+        }
+        return written;
+    }
+
+    /** All the DB tables a snapshot computation needs, pre-loaded into in-memory
+     *  structures shaped for the lookups {@code computeTotalsSync} performs. */
+    private static final class BulkSnapshotData {
+        List<AssetEntity> allAssets;
+        // Events grouped by assetId, each list sorted by timestamp ASC.
+        Map<Long, List<EventEntity>> eventsByAssetId;
+        // DIVIDEND/MATURITY events keyed by their incomeSourceAssetId, sorted by ts.
+        Map<Long, List<EventEntity>> incomeBySourceAssetId;
+        // Set of timestamps where ANY non-cash event occurs — used by trade-leg detection.
+        Set<LocalDateTime> nonCashTimestamps;
+        // Stock close prices: ticker → (date → close), navigable for findOnOrBefore.
+        Map<String, NavigableMap<LocalDate, BigDecimal>> pricesByTicker;
+        // FX rates: (src,tgt) → (date → rate).
+        Map<Currency, Map<Currency, NavigableMap<LocalDate, BigDecimal>>> fxBySrcTgt;
+    }
+
+    private BulkSnapshotData loadBulkSnapshotData() {
+        BulkSnapshotData b = new BulkSnapshotData();
+        b.allAssets = assetDao.getAll();
+        b.eventsByAssetId = new HashMap<>();
+        b.incomeBySourceAssetId = new HashMap<>();
+        b.nonCashTimestamps = new HashSet<>();
+
+        Set<Long> cashAssetIds = new HashSet<>();
+        for (AssetEntity a : b.allAssets) {
+            if (a.type == AssetType.CASH) cashAssetIds.add(a.id);
+        }
+
+        for (EventEntity e : eventDao.getAllChronological()) {
+            b.eventsByAssetId.computeIfAbsent(e.assetId, k -> new ArrayList<>()).add(e);
+            if (e.incomeSourceAssetId != null) {
+                b.incomeBySourceAssetId
+                        .computeIfAbsent(e.incomeSourceAssetId, k -> new ArrayList<>())
+                        .add(e);
+            }
+            if (!cashAssetIds.contains(e.assetId)) {
+                b.nonCashTimestamps.add(e.timestamp);
+            }
+        }
+
+        b.pricesByTicker = new HashMap<>();
+        for (StockPriceEntity p : stockPriceDao.getAll()) {
+            b.pricesByTicker
+                    .computeIfAbsent(p.ticker, k -> new TreeMap<>())
+                    .put(p.date, p.closePrice);
+        }
+
+        b.fxBySrcTgt = new EnumMap<>(Currency.class);
+        for (ExchangeRateEntity r : exchangeRateDao.getAll()) {
+            b.fxBySrcTgt
+                    .computeIfAbsent(r.sourceCurrency, k -> new EnumMap<>(Currency.class))
+                    .computeIfAbsent(r.targetCurrency, k -> new TreeMap<>())
+                    .put(r.date, r.rate);
+        }
+
+        return b;
+    }
+
+    /** {@link #computeTotalsSync} re-implemented against pre-loaded {@link BulkSnapshotData}.
+     *  Logic must mirror that method exactly — only the DAO calls are replaced with
+     *  in-memory lookups. */
+    private PortfolioTotals computeTotalsFromBulk(LocalDate asOf, BulkSnapshotData b) {
+        LocalDateTime upTo = endOfDay(asOf);
+
+        Map<Currency, BigDecimal> valueBucket = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> investedBucket = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> dividendsBucket = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> realizedBucket = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> unrealizedBucket = new EnumMap<>(Currency.class);
+
+        boolean hasFxGaps = false;
+
+        // Holdings: market value per asset (cash uses balance, stock uses price-on-or-before,
+        // bond uses BondValuator).
+        for (AssetEntity asset : b.allAssets) {
+            List<EventEntity> events = sliceUpTo(b.eventsByAssetId.get(asset.id), upTo);
+            if (asset.type == AssetType.CASH) {
+                BigDecimal balance = sumCashNet(events);
+                valueBucket.merge(asset.currency, balance, BigDecimal::add);
+                continue;
+            }
+            FifoResult fifo = computeFifo(events);
+            if (fifo.openQty.signum() == 0) continue;
+            BigDecimal mv = computeMarketValueFromBulk(asset, fifo.openLots, upTo, b);
+            if (mv != null) valueBucket.merge(asset.currency, mv, BigDecimal::add);
+        }
+
+        BigDecimal valueInBase = BigDecimal.ZERO;
+        for (Map.Entry<Currency, BigDecimal> e : valueBucket.entrySet()) {
+            BigDecimal converted = convertFromBulk(e.getValue(), e.getKey(), BASE_CURRENCY, asOf, b);
+            if (converted == null) { hasFxGaps = true; continue; }
+            valueInBase = valueInBase.add(converted);
+        }
+
+        BigDecimal investedInBase = BigDecimal.ZERO;
+        for (AssetEntity asset : b.allAssets) {
+            if (asset.type != AssetType.CASH) continue;
+            BigDecimal capital = BigDecimal.ZERO;
+            BigDecimal dividends = BigDecimal.ZERO;
+            List<EventEntity> events = sliceUpTo(b.eventsByAssetId.get(asset.id), upTo);
+            for (EventEntity ev : events) {
+                if (ev.type == EventType.DIVIDEND) {
+                    dividends = dividends.add(ev.amount);
+                    continue;
+                }
+                if (ev.type == EventType.CONVERSION_IN) {
+                    capital = capital.add(ev.amount);
+                    BigDecimal base = convertFromBulk(
+                            ev.amount, asset.currency, BASE_CURRENCY, ev.timestamp.toLocalDate(), b);
+                    if (base == null) hasFxGaps = true;
+                    else investedInBase = investedInBase.add(base);
+                    continue;
+                }
+                if (ev.type == EventType.CONVERSION_OUT) {
+                    capital = capital.subtract(ev.amount);
+                    BigDecimal base = convertFromBulk(
+                            ev.amount, asset.currency, BASE_CURRENCY, ev.timestamp.toLocalDate(), b);
+                    if (base == null) hasFxGaps = true;
+                    else investedInBase = investedInBase.subtract(base);
+                    continue;
+                }
+                if (ev.incomeSourceAssetId != null) continue;
+                if (b.nonCashTimestamps.contains(ev.timestamp)) continue;  // trade leg
+                BigDecimal signed = (ev.type == EventType.IN) ? ev.amount : ev.amount.negate();
+                capital = capital.add(signed);
+                BigDecimal baseContribution = convertFromBulk(
+                        signed, asset.currency, BASE_CURRENCY, ev.timestamp.toLocalDate(), b);
+                if (baseContribution == null) hasFxGaps = true;
+                else investedInBase = investedInBase.add(baseContribution);
+            }
+            investedBucket.put(asset.currency, capital);
+            dividendsBucket.put(asset.currency, dividends);
+        }
+
+        for (AssetEntity asset : b.allAssets) {
+            if (asset.type == AssetType.CASH) continue;
+            List<EventEntity> evs = sliceUpTo(b.eventsByAssetId.get(asset.id), upTo);
+            FifoResult fifo = computeFifo(evs);
+            BigDecimal realized = fifo.realizedProceeds.subtract(fifo.realizedCostBasis);
+            realizedBucket.merge(asset.currency, realized, BigDecimal::add);
+            if (fifo.openQty.signum() > 0) {
+                BigDecimal mv = computeMarketValueFromBulk(asset, fifo.openLots, upTo, b);
+                if (mv != null) {
+                    unrealizedBucket.merge(
+                            asset.currency, mv.subtract(fifo.openCostBasis), BigDecimal::add);
+                }
+            }
+        }
+
+        Map<Currency, NativeBucket> bucketByCurrency = new EnumMap<>(Currency.class);
+        for (Currency c : Currency.values()) {
+            BigDecimal v = valueBucket.getOrDefault(c, BigDecimal.ZERO);
+            BigDecimal i = investedBucket.getOrDefault(c, BigDecimal.ZERO);
+            BigDecimal d = dividendsBucket.getOrDefault(c, BigDecimal.ZERO);
+            BigDecimal r = realizedBucket.getOrDefault(c, BigDecimal.ZERO);
+            BigDecimal u = unrealizedBucket.getOrDefault(c, BigDecimal.ZERO);
+            bucketByCurrency.put(c, new NativeBucket(v, i, v.subtract(i), d, r, u));
+        }
+
+        Map<Currency, BigDecimal> valueByDisplayCurrency = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> investedByDisplayCurrency = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> pnlByDisplayCurrency = new EnumMap<>(Currency.class);
+        valueByDisplayCurrency.put(BASE_CURRENCY, valueInBase);
+        investedByDisplayCurrency.put(BASE_CURRENCY, investedInBase);
+        pnlByDisplayCurrency.put(BASE_CURRENCY, valueInBase.subtract(investedInBase));
+        for (Currency c : Currency.values()) {
+            if (c == BASE_CURRENCY) continue;
+            BigDecimal v = convertFromBulk(valueInBase, BASE_CURRENCY, c, asOf, b);
+            BigDecimal i = convertFromBulk(investedInBase, BASE_CURRENCY, c, asOf, b);
+            if (v == null || i == null) { hasFxGaps = true; continue; }
+            valueByDisplayCurrency.put(c, v);
+            investedByDisplayCurrency.put(c, i);
+            pnlByDisplayCurrency.put(c, v.subtract(i));
+        }
+
+        return new PortfolioTotals(
+                BASE_CURRENCY,
+                valueInBase,
+                investedInBase,
+                valueInBase.subtract(investedInBase),
+                valueByDisplayCurrency,
+                investedByDisplayCurrency,
+                pnlByDisplayCurrency,
+                bucketByCurrency,
+                hasFxGaps);
+    }
+
+    /** Returns the prefix of {@code chrono} (sorted by timestamp) with timestamps {@code <= upTo}. */
+    private static List<EventEntity> sliceUpTo(@Nullable List<EventEntity> chrono, LocalDateTime upTo) {
+        if (chrono == null || chrono.isEmpty()) return Collections.emptyList();
+        // Linear scan — events per asset are typically small (<200), simpler than binarySearch.
+        int hi = chrono.size();
+        for (int i = 0; i < chrono.size(); i++) {
+            if (chrono.get(i).timestamp.isAfter(upTo)) { hi = i; break; }
+        }
+        return chrono.subList(0, hi);
+    }
+
+    @Nullable
+    private BigDecimal computeMarketValueFromBulk(
+            AssetEntity asset, List<OpenLot> openLots, LocalDateTime upTo, BulkSnapshotData b) {
+        if (asset.type == AssetType.STOCK) {
+            NavigableMap<LocalDate, BigDecimal> series = b.pricesByTicker.get(asset.ticker);
+            if (series == null) return null;
+            Map.Entry<LocalDate, BigDecimal> entry = series.floorEntry(upTo.toLocalDate());
+            if (entry == null) return null;
+            BigDecimal totalQty = BigDecimal.ZERO;
+            for (OpenLot lot : openLots) totalQty = totalQty.add(lot.qty);
+            return totalQty.multiply(entry.getValue());
+        }
+        if (asset.type == AssetType.BOND) {
+            return BondValuator.valueOf(asset, openLots, Collections.emptyList(), upTo);
+        }
+        return null;
+    }
+
+    @Nullable
+    private BigDecimal convertFromBulk(
+            BigDecimal amount, Currency src, Currency tgt, LocalDate on, BulkSnapshotData b) {
+        if (src == tgt) return amount;
+        Map<Currency, NavigableMap<LocalDate, BigDecimal>> bySrc = b.fxBySrcTgt.get(src);
+        if (bySrc == null) return null;
+        NavigableMap<LocalDate, BigDecimal> series = bySrc.get(tgt);
+        if (series == null) return null;
+        Map.Entry<LocalDate, BigDecimal> e = series.floorEntry(on);
+        if (e == null) return null;
+        return amount.multiply(e.getValue(), MC);
+    }
+
+    private static PortfolioValueSnapshotEntity buildSnapshotEntity(LocalDate d, PortfolioTotals t) {
+        PortfolioValueSnapshotEntity s = new PortfolioValueSnapshotEntity();
+        s.date = d;
+        s.baseCurrency = t.baseCurrency;
+        s.valueInBase = t.valueInBase;
+        s.investedInBase = t.investedInBase;
+        s.hasFxGaps = t.hasFxGaps;
+        NativeBucket usd = t.bucketByCurrency.get(Currency.USD);
+        NativeBucket eur = t.bucketByCurrency.get(Currency.EUR);
+        NativeBucket uah = t.bucketByCurrency.get(Currency.UAH);
+        s.valueUsd = usd != null ? usd.value : BigDecimal.ZERO;
+        s.valueEur = eur != null ? eur.value : BigDecimal.ZERO;
+        s.valueUah = uah != null ? uah.value : BigDecimal.ZERO;
+        s.investedUsd = usd != null ? usd.invested : BigDecimal.ZERO;
+        s.investedEur = eur != null ? eur.invested : BigDecimal.ZERO;
+        s.investedUah = uah != null ? uah.invested : BigDecimal.ZERO;
+        return s;
+    }
+
+    /**
      * Convert {@code amount} from {@code src} to {@code tgt} using the most-recent FX
      * rate on or before {@code on}. Null if no rate is available — caller marks that
      * as an FX gap.
@@ -927,12 +1464,18 @@ public final class PortfolioRepository {
             if (asset.type == AssetType.CASH) {
                 BigDecimal balance = sumCashNet(events);
                 // Cash is always worth its face — market value = quantity.
-                holdings.add(new Holding(asset, balance, null, balance));
+                holdings.add(new Holding(asset, balance, null, balance, null, null));
             } else {
                 FifoResult fifo = computeFifo(events);
                 if (fifo.openQty.signum() == 0) continue;
                 BigDecimal marketValue = computeMarketValue(asset, fifo.openLots, upTo);
-                holdings.add(new Holding(asset, fifo.openQty, fifo.openCostBasis, marketValue));
+                BigDecimal realized = fifo.realizedProceeds.subtract(fifo.realizedCostBasis);
+                BigDecimal dividends = BigDecimal.ZERO;
+                for (EventEntity inc : eventDao.getIncomeFromAssetAsOf(asset.id, upTo)) {
+                    dividends = dividends.add(inc.amount);
+                }
+                holdings.add(new Holding(
+                        asset, fifo.openQty, fifo.openCostBasis, marketValue, dividends, realized));
             }
         }
         return holdings;
@@ -959,8 +1502,10 @@ public final class PortfolioRepository {
             return totalQty.multiply(quote.closePrice);
         }
         if (asset.type == AssetType.BOND) {
-            List<EventEntity> coupons = eventDao.getIncomeFromAssetAsOf(asset.id, upTo);
-            return BondValuator.valueOf(asset, openLots, coupons, upTo);
+            // Bonds carry no live market price; held at face × qty for the lifetime.
+            // Premium/discount surfaces as -unrealized (constant) and converts to
+            // realized at sale or maturity.
+            return BondValuator.valueOf(asset, openLots, Collections.emptyList(), upTo);
         }
         return null;
     }
@@ -1030,12 +1575,16 @@ public final class PortfolioRepository {
     private static BigDecimal sumCashNet(List<EventEntity> events) {
         BigDecimal net = BigDecimal.ZERO;
         for (EventEntity e : events) {
-            // DIVIDEND and MATURITY on a cash pile are positive inflows, same as IN.
+            // Inflows: external deposits + investment income + bond redemption +
+            // incoming side of a currency conversion.
             if (e.type == EventType.IN
                     || e.type == EventType.DIVIDEND
-                    || e.type == EventType.MATURITY) {
+                    || e.type == EventType.MATURITY
+                    || e.type == EventType.CONVERSION_IN) {
                 net = net.add(e.amount);
-            } else if (e.type == EventType.OUT) {
+            } else if (e.type == EventType.OUT
+                    || e.type == EventType.CONVERSION_OUT) {
+                // Outflows: withdrawals, trade-leg cash OUT, conversion-out leg.
                 net = net.subtract(e.amount);
             }
             // SPLIT events never appear on cash assets — defensive ignore.
@@ -1194,16 +1743,31 @@ public final class PortfolioRepository {
          * BOND: {@link com.my.finmon.domain.BondValuator} result.
          */
         @Nullable public final BigDecimal marketValue;
+        /**
+         * Lifetime dividends + bond coupons received from this asset (cash IN events
+         * with {@code incomeSourceAssetId = asset.id}). Null for CASH. Native currency.
+         */
+        @Nullable public final BigDecimal lifetimeDividends;
+        /**
+         * Lifetime realized P&amp;L from FIFO sells/maturities on this asset
+         * ({@code Σ realizedProceeds − realizedCostBasis}). Null for CASH; zero when
+         * no sells have happened yet (most active holdings).
+         */
+        @Nullable public final BigDecimal lifetimeRealizedPnl;
 
         public Holding(
                 @NonNull AssetEntity asset,
                 @NonNull BigDecimal quantity,
                 @Nullable BigDecimal openCostBasis,
-                @Nullable BigDecimal marketValue) {
+                @Nullable BigDecimal marketValue,
+                @Nullable BigDecimal lifetimeDividends,
+                @Nullable BigDecimal lifetimeRealizedPnl) {
             this.asset = asset;
             this.quantity = quantity;
             this.openCostBasis = openCostBasis;
             this.marketValue = marketValue;
+            this.lifetimeDividends = lifetimeDividends;
+            this.lifetimeRealizedPnl = lifetimeRealizedPnl;
         }
     }
 
@@ -1343,6 +1907,13 @@ public final class PortfolioRepository {
         @NonNull public final BigDecimal purchasePrice;
         @NonNull public final BigDecimal windowRealizedPnl;
         @NonNull public final BigDecimal windowUnrealizedPnl;
+        /**
+         * Income (dividends + bond coupons + maturity inflow) attributed to this lot
+         * for the window. For each income event in window, the asset's payout is split
+         * pro-rata across the lots open at that moment by their qty share.
+         */
+        @NonNull public final BigDecimal windowDividends;
+        /** {@code realized + unrealized + dividends} — the lot's lifetime-in-window P&L. */
         @NonNull public final BigDecimal windowTotalPnl;
 
         public TradeRow(
@@ -1356,6 +1927,7 @@ public final class PortfolioRepository {
                 @NonNull BigDecimal purchasePrice,
                 @NonNull BigDecimal windowRealizedPnl,
                 @NonNull BigDecimal windowUnrealizedPnl,
+                @NonNull BigDecimal windowDividends,
                 @NonNull BigDecimal windowTotalPnl) {
             this.assetId = assetId;
             this.ticker = ticker;
@@ -1367,6 +1939,7 @@ public final class PortfolioRepository {
             this.purchasePrice = purchasePrice;
             this.windowRealizedPnl = windowRealizedPnl;
             this.windowUnrealizedPnl = windowUnrealizedPnl;
+            this.windowDividends = windowDividends;
             this.windowTotalPnl = windowTotalPnl;
         }
     }

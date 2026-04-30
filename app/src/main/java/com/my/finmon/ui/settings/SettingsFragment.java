@@ -3,11 +3,14 @@ package com.my.finmon.ui.settings;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.EditText;
 import android.widget.Filter;
 
 import androidx.activity.result.ActivityResult;
@@ -24,13 +27,13 @@ import com.my.finmon.R;
 import com.my.finmon.ServiceLocator;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.ImportExportRepository;
-import com.my.finmon.data.repository.ImportExportRepository.ImportResult;
 import com.my.finmon.databinding.FragmentSettingsBinding;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -82,6 +85,7 @@ public final class SettingsFragment extends Fragment {
         ).get(SettingsViewModel.class);
 
         setupDisplayCurrencyDropdown();
+        setupTaxDefaults();
 
         binding.buttonAddAsset.setOnClickListener(v ->
                 NavHostFragment.findNavController(this)
@@ -91,8 +95,71 @@ public final class SettingsFragment extends Fragment {
                 NavHostFragment.findNavController(this)
                         .navigate(R.id.action_settings_to_manualEvent));
 
+        binding.buttonTaxOverrides.setOnClickListener(v ->
+                NavHostFragment.findNavController(this)
+                        .navigate(R.id.action_settings_to_taxOverrides));
+
         binding.buttonExportData.setOnClickListener(v -> launchExport());
         binding.buttonImportData.setOnClickListener(v -> launchImport());
+    }
+
+    private void setupTaxDefaults() {
+        bindTaxField(
+                binding.defaultStockTaxInput,
+                viewModel.defaultStockTaxPct(),
+                viewModel::setDefaultStockTaxPct,
+                binding.defaultStockTaxLayout);
+        bindTaxField(
+                binding.defaultBondTaxInput,
+                viewModel.defaultBondTaxPct(),
+                viewModel::setDefaultBondTaxPct,
+                binding.defaultBondTaxLayout);
+    }
+
+    /**
+     * Two-way binding for a percent input. Pre-fills from the LiveData; on focus loss,
+     * parses + clamps + persists. Keeps the field reactive to external changes (e.g. an
+     * import that overwrote settings) without fighting the user mid-typing.
+     */
+    private void bindTaxField(
+            @NonNull EditText input,
+            @NonNull androidx.lifecycle.LiveData<BigDecimal> source,
+            @NonNull java.util.function.Consumer<BigDecimal> sink,
+            @NonNull com.google.android.material.textfield.TextInputLayout layout) {
+        final boolean[] internalEdit = { false };
+        source.observe(getViewLifecycleOwner(), pct -> {
+            if (pct == null) return;
+            if (input.isFocused()) return;  // don't stomp on the user's in-progress edit
+            String text = pct.stripTrailingZeros().toPlainString();
+            if (!text.equals(input.getText() == null ? "" : input.getText().toString())) {
+                internalEdit[0] = true;
+                input.setText(text);
+                internalEdit[0] = false;
+            }
+        });
+        input.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (internalEdit[0]) return;
+                layout.setError(null);
+            }
+        });
+        input.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) return;  // commit on blur
+            String raw = input.getText() == null ? "" : input.getText().toString().trim();
+            if (raw.isEmpty()) return;
+            try {
+                BigDecimal pct = new BigDecimal(raw);
+                if (pct.signum() < 0 || pct.compareTo(BigDecimal.valueOf(100)) > 0) {
+                    layout.setError(getString(R.string.settings_tax_invalid));
+                    return;
+                }
+                sink.accept(pct);
+            } catch (NumberFormatException e) {
+                layout.setError(getString(R.string.settings_tax_invalid));
+            }
+        });
     }
 
     private void setupDisplayCurrencyDropdown() {
@@ -161,14 +228,15 @@ public final class SettingsFragment extends Fragment {
         Uri uri = (result.getData() != null) ? result.getData().getData() : null;
         if (uri == null) return;
         ServiceLocator sl = ServiceLocator.get(requireContext());
-        ImportExportRepository repo = sl.importExportRepository();
         ExecutorService bridge = sl.viewExecutor();
         bridge.execute(() -> {
             try {
                 String json = readText(uri);
-                ImportResult r = repo.importFromJson(json).get();
-                postSnack(getString(R.string.import_success,
-                        r.assetsImported, r.eventsImported, r.eventsEnriched));
+                // Hand off to the orchestrator: drives the same blocking overlay the
+                // startup sync uses, runs the import, then rebuilds snapshots so the
+                // chart reflects imported history immediately. The overlay disappearing
+                // is the user-visible success signal.
+                sl.startupSyncOrchestrator().runImport(json);
             } catch (Exception e) {
                 Log.w(TAG, "import failed", e);
                 Throwable cause = (e.getCause() != null) ? e.getCause() : e;

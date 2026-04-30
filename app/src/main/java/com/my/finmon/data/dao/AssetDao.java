@@ -12,6 +12,7 @@ import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Dao
@@ -42,6 +43,10 @@ public interface AssetDao {
 
     @Query("SELECT * FROM asset ORDER BY type ASC, ticker ASC")
     LiveData<List<AssetEntity>> observeAll();
+
+    /** Sets {@code taxRatePct} for one asset; null clears the override. */
+    @Query("UPDATE asset SET taxRatePct = :ratePct WHERE id = :id")
+    void updateTaxRate(long id, @Nullable BigDecimal ratePct);
 
     /** Wipes the whole table — used by the JSON import flow. */
     @Query("DELETE FROM asset")

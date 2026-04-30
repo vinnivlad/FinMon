@@ -4,7 +4,8 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.PopupMenu;
+import android.widget.ArrayAdapter;
+import android.widget.ListPopupWindow;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -136,18 +137,38 @@ public class PortfolioFragment extends Fragment {
     }
 
     private void showFabMenu(@NonNull View anchor) {
-        PopupMenu menu = new PopupMenu(requireContext(), anchor);
-        menu.inflate(R.menu.portfolio_fab_menu);
-        menu.setOnMenuItemClickListener(item -> {
-            int id = item.getItemId();
-            if (id == R.id.menu_record_trade) {
+        // PopupMenu auto-picks placement and prefers below the anchor; using ListPopupWindow
+        // so we can pin the menu above the FAB (negative vertical offset = anchor height +
+        // measured menu height, so the menu's bottom sits just above the FAB's top).
+        String[] labels = { getString(R.string.menu_record_trade) };
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                requireContext(), R.layout.item_fab_menu, labels);
+
+        ListPopupWindow popup = new ListPopupWindow(requireContext());
+        popup.setAnchorView(anchor);
+        popup.setAdapter(adapter);
+        popup.setModal(true);
+
+        // Measure one row to compute the upward offset. WRAP_CONTENT for height keeps the
+        // popup tight to its content; the offset just needs to clear the FAB.
+        View row = adapter.getView(0, null, (ViewGroup) anchor.getParent());
+        row.measure(
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        int rowH = row.getMeasuredHeight();
+        int rowW = row.getMeasuredWidth();
+        popup.setContentWidth(rowW);
+        popup.setVerticalOffset(-(anchor.getHeight() + rowH * labels.length));
+
+        popup.setOnItemClickListener((parent, v, position, id) -> {
+            popup.dismiss();
+            if (position == 0) {
                 NavHostFragment.findNavController(this)
                         .navigate(R.id.action_portfolio_to_addTrade);
-                return true;
             }
-            return false;
         });
-        menu.show();
+        popup.show();
     }
 
     @Override

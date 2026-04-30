@@ -7,6 +7,7 @@ import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -79,6 +80,13 @@ public final class FakeAssetDao implements AssetDao {
     @Override
     public LiveData<List<AssetEntity>> observeAll() {
         throw new UnsupportedOperationException("observeAll not supported in unit-test fakes");
+    }
+
+    @Override
+    public void updateTaxRate(long id, BigDecimal ratePct) {
+        AssetEntity a = byId.get(id);
+        if (a == null) throw new IllegalStateException("updateTaxRate of unknown asset " + id);
+        a.taxRatePct = ratePct;
     }
 
     @Override

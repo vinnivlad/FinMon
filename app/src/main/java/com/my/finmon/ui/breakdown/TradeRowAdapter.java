@@ -69,7 +69,8 @@ final class TradeRowAdapter extends ListAdapter<TradeRow, TradeRowAdapter.VH> {
         h.b.breakdownLine.setText(ctx.getString(
                 R.string.trade_row_breakdown,
                 signed(r.windowRealizedPnl),
-                signed(r.windowUnrealizedPnl)));
+                signed(r.windowUnrealizedPnl),
+                signed(r.windowDividends)));
 
         h.b.totalPnl.setText(signed(r.windowTotalPnl));
         h.b.totalPnl.setTextColor(colorFor(r.windowTotalPnl));
@@ -114,7 +115,8 @@ final class TradeRowAdapter extends ListAdapter<TradeRow, TradeRowAdapter.VH> {
                             && a.remainingQty.compareTo(b.remainingQty) == 0
                             && a.purchasePrice.compareTo(b.purchasePrice) == 0
                             && a.windowRealizedPnl.compareTo(b.windowRealizedPnl) == 0
-                            && a.windowUnrealizedPnl.compareTo(b.windowUnrealizedPnl) == 0;
+                            && a.windowUnrealizedPnl.compareTo(b.windowUnrealizedPnl) == 0
+                            && a.windowDividends.compareTo(b.windowDividends) == 0;
                 }
             };
 }

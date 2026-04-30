@@ -11,22 +11,30 @@ import com.my.finmon.sync.PortfolioSyncWorker;
  * Activity is created, kicks off the foreground startup sync, and registers the periodic
  * background sync.
  *
- * <p>In DEBUG builds the DB is wiped on every launch and {@link DevSeeder} reseeds a
- * fresh set of assets + trades + one coupon, so the emulator always shows a meaningful
- * portfolio. The seeder runs <em>before</em> the startup sync orchestrator on a shared
- * background thread — the orchestrator would otherwise race against an empty DB on the
- * first launch after a wipe. Imports done during a session don't survive the next
- * launch — that's intentional during development.
+ * <p>The DEBUG wipe-and-seed path is gated by {@link #WIPE_AND_SEED_ON_DEBUG_LAUNCH}.
+ * When {@code true} (default during fixture-driven dev), the DB is wiped on every launch
+ * and {@link DevSeeder} reseeds a fresh set of assets + trades + one coupon — imports
+ * done during a session don't survive the next launch. Flip to {@code false} when
+ * working with real imported data so it persists across runs.
  *
  * <p>Registered in AndroidManifest.xml via {@code android:name=".FinMonApplication"}.
  */
 public final class FinMonApplication extends Application {
 
+    /**
+     * Flip to {@code true} to restore the DEBUG fixture-driven flow (wipe DB +
+     * {@link DevSeeder} on every launch). Currently {@code false} so real imports
+     * persist across launches.
+     */
+    private static final boolean WIPE_AND_SEED_ON_DEBUG_LAUNCH = false;
+
     @Override
     public void onCreate() {
         super.onCreate();
 
-        if (BuildConfig.DEBUG) {
+        boolean wipeAndSeed = BuildConfig.DEBUG && WIPE_AND_SEED_ON_DEBUG_LAUNCH;
+
+        if (wipeAndSeed) {
             deleteDatabase(FinMonDatabase.DB_NAME);
         }
 
@@ -35,7 +43,7 @@ public final class FinMonApplication extends Application {
         // Periodic background sync — separate from the foreground startup sync below.
         PortfolioSyncWorker.schedule(this);
 
-        if (BuildConfig.DEBUG) {
+        if (wipeAndSeed) {
             // Seed first, then start sync. Both run on the view executor (single thread,
             // serialized) so the orchestrator can't race ahead of the seeder's inserts.
             sl.viewExecutor().execute(() -> {

@@ -71,6 +71,15 @@ public class AssetEntity {
     @Nullable
     public BigDecimal bondYieldPct;
 
+    /**
+     * Per-asset tax-rate override expressed as a percent (e.g. 15 = 15%). When null,
+     * the repo falls back to the user's default for this asset's {@link #type} (see
+     * {@code TaxRates}). Only the auto-ingest paths (Yahoo dividend / NBU coupon)
+     * apply this — manual income entry stores the user-supplied net amount as-is.
+     */
+    @Nullable
+    public BigDecimal taxRatePct;
+
     public AssetEntity() {
         this.ticker = "";
         this.currency = Currency.USD;

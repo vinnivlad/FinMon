@@ -134,6 +134,7 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
         final TextView primaryValue;
         final TextView subValue;
         final TextView pnl;
+        final TextView breakdownLine;
 
         ActiveRow(@NonNull View v) {
             super(v);
@@ -142,6 +143,7 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
             primaryValue = v.findViewById(R.id.primaryValue);
             subValue = v.findViewById(R.id.subValue);
             pnl = v.findViewById(R.id.pnl);
+            breakdownLine = v.findViewById(R.id.breakdownLine);
         }
 
         void bind(@NonNull Holding h) {
@@ -154,6 +156,7 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
                 primaryValue.setText(MONEY.format(h.quantity) + " " + ccy);
                 subValue.setVisibility(View.GONE);
                 pnl.setVisibility(View.GONE);
+                breakdownLine.setVisibility(View.GONE);
                 return;
             }
 
@@ -170,17 +173,37 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
                 subValue.setVisibility(View.GONE);
             }
 
+            // Lifetime P&L: unrealized (mv - cost) + realized + dividends. Color the
+            // headline by the lifetime number — so a bond with deep premium-paid
+            // unrealized but ample coupons received reads green to match its currency
+            // page's per-lot trade-row totals.
             if (h.marketValue != null && h.openCostBasis != null
                     && h.openCostBasis.signum() != 0) {
-                BigDecimal delta = h.marketValue.subtract(h.openCostBasis);
-                BigDecimal pct = delta.divide(h.openCostBasis, PCT_MC).multiply(new BigDecimal("100"));
-                pnl.setText(SIGNED_MONEY.format(delta) + " (" + PCT.format(pct) + ")");
-                int color = pnlColor(delta);
-                pnl.setTextColor(ContextCompat.getColor(itemView.getContext(), color));
+                BigDecimal unrealized = h.marketValue.subtract(h.openCostBasis);
+                BigDecimal realized = h.lifetimeRealizedPnl != null
+                        ? h.lifetimeRealizedPnl : BigDecimal.ZERO;
+                BigDecimal dividends = h.lifetimeDividends != null
+                        ? h.lifetimeDividends : BigDecimal.ZERO;
+                BigDecimal lifetime = unrealized.add(realized).add(dividends);
+                BigDecimal pct = lifetime.divide(h.openCostBasis, PCT_MC).multiply(new BigDecimal("100"));
+                pnl.setText(SIGNED_MONEY.format(lifetime) + " (" + PCT.format(pct) + ")");
+                pnl.setTextColor(ContextCompat.getColor(itemView.getContext(), pnlColor(lifetime)));
                 pnl.setVisibility(View.VISIBLE);
+
+                breakdownLine.setText(itemView.getContext().getString(
+                        R.string.trade_row_breakdown,
+                        signed(realized),
+                        signed(unrealized),
+                        signed(dividends)));
+                breakdownLine.setVisibility(View.VISIBLE);
             } else {
                 pnl.setVisibility(View.GONE);
+                breakdownLine.setVisibility(View.GONE);
             }
+        }
+
+        private static String signed(@NonNull BigDecimal v) {
+            return SIGNED_MONEY.format(v);
         }
     }
 
@@ -263,6 +286,8 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
                 return sameBD(ha.quantity, hb.quantity)
                         && sameBD(ha.openCostBasis, hb.openCostBasis)
                         && sameBD(ha.marketValue, hb.marketValue)
+                        && sameBD(ha.lifetimeDividends, hb.lifetimeDividends)
+                        && sameBD(ha.lifetimeRealizedPnl, hb.lifetimeRealizedPnl)
                         && Objects.equals(ha.asset.ticker, hb.asset.ticker)
                         && ha.asset.type == hb.asset.type
                         && ha.asset.currency == hb.asset.currency;

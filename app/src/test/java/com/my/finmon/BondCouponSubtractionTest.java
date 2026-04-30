@@ -1,6 +1,6 @@
 package com.my.finmon;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
 
 import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.entity.EventEntity;
@@ -19,27 +19,19 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Bond value with one coupon already received — accrued growth on face is reduced by
- * the coupon amount so cash and bond aren't double-counted (the coupon was already
- * credited to the cash pile elsewhere; subtracting it from the bond's "still owed"
- * accrual leaves the total holding correct).
+ * Pins the broker-aligned bond model: coupons received do <em>not</em> affect the
+ * bond's reported value. They've already been credited to the cash pile via DIVIDEND
+ * events; the bond itself stays at {@code face × Σ open_qty} regardless.
  *
- * <p><b>Fixture:</b>
- * <pre>
- *   bond:   face = 1000, yield = 12%/yr, maturity 2030-01-01
- *   lot:    10 units acquired 2026-01-01
- *   asOf:   2026-07-01 (181 days)
- *   coupons received: one DIVIDEND event with amount = 500 UAH at 2026-04-01
- * </pre>
- *
- * <p><b>Expected:</b> value = accrual − coupon
- *                          = (1000 · 10 · (1 + 0.12 · 181/365)) − 500
- *                          ≈ 10595.07 − 500 = 10095.07 UAH (within rounding).
+ * <p>This is the inverse of the previous "accrual minus coupons" formula — under that
+ * model coupons reduced the bond's marked value to avoid double-counting the cash. With
+ * the simpler face-only model there's nothing to double-count, so the {@code coupons}
+ * arg is ignored entirely.
  */
 public final class BondCouponSubtractionTest {
 
     @Test
-    public void couponSubtractsFromAccruedValue() {
+    public void couponDoesNotReduceBondValue() {
         AssetEntity bond = new AssetEntity();
         bond.id = 42;
         bond.ticker = "OVDP-X";
@@ -59,7 +51,7 @@ public final class BondCouponSubtractionTest {
         coupon.id = 1;
         coupon.timestamp = LocalDate.of(2026, 4, 1).atStartOfDay();
         coupon.type = EventType.DIVIDEND;
-        coupon.assetId = -1;             // would be CASH_UAH in production; not read by valuator
+        coupon.assetId = -1;
         coupon.amount = new BigDecimal("500");
         coupon.price = BigDecimal.ONE;
         coupon.incomeSourceAssetId = bond.id;
@@ -67,11 +59,7 @@ public final class BondCouponSubtractionTest {
         BigDecimal value = BondValuator.valueOf(
                 bond, lots, Collections.singletonList(coupon), asOf);
 
-        // Accrual − coupon. Use the no-coupon test as a reference point: ~10595.07.
-        BigDecimal expected = new BigDecimal("10595.0684931506849"); // accrual to 13 dp
-        BigDecimal expectedAfterCoupon = expected.subtract(new BigDecimal("500"));
-        BigDecimal diff = value.subtract(expectedAfterCoupon).abs();
-        assertTrue("accrual minus coupon within tolerance, diff=" + diff,
-                diff.compareTo(new BigDecimal("0.0001")) <= 0);
+        // 1000 × 10 = 10000 — the 500 UAH coupon doesn't enter this calculation.
+        assertEquals(0, value.compareTo(new BigDecimal("10000")));
     }
 }

@@ -43,6 +43,9 @@ public interface StockPriceDao {
             + "ORDER BY date ASC")
     List<StockPriceEntity> getRange(String ticker, LocalDate from, LocalDate to);
 
+    @Query("SELECT * FROM stock_price ORDER BY ticker ASC, date ASC")
+    List<StockPriceEntity> getAll();
+
     /** Wipes the whole table — used by the JSON import flow. */
     @Query("DELETE FROM stock_price")
     void deleteAll();

@@ -11,9 +11,11 @@ import com.my.finmon.ServiceLocator;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.prefs.UserPreferences;
 
+import java.math.BigDecimal;
+
 /**
  * Backs {@link SettingsFragment}. Wraps {@link UserPreferences} so the fragment can
- * observe the current display currency reactively and write through a single API.
+ * observe display + tax-default state reactively and write through a single API.
  */
 public final class SettingsViewModel extends ViewModel {
 
@@ -30,6 +32,24 @@ public final class SettingsViewModel extends ViewModel {
 
     public void setDisplayCurrency(@NonNull Currency currency) {
         prefs.setDisplayCurrency(currency);
+    }
+
+    @NonNull
+    public LiveData<BigDecimal> defaultStockTaxPct() {
+        return prefs.defaultStockTaxPct();
+    }
+
+    @NonNull
+    public LiveData<BigDecimal> defaultBondTaxPct() {
+        return prefs.defaultBondTaxPct();
+    }
+
+    public void setDefaultStockTaxPct(@NonNull BigDecimal pct) {
+        prefs.setDefaultStockTaxPct(pct);
+    }
+
+    public void setDefaultBondTaxPct(@NonNull BigDecimal pct) {
+        prefs.setDefaultBondTaxPct(pct);
     }
 
     @NonNull

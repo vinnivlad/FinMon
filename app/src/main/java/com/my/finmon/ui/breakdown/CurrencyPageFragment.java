@@ -16,9 +16,11 @@ import com.my.finmon.R;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.PortfolioRepository.NativeBucket;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
+import com.my.finmon.data.repository.PortfolioRepository.TradeRow;
 import com.my.finmon.databinding.FragmentCurrencyPageBinding;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
@@ -84,14 +86,20 @@ public class CurrencyPageFragment extends Fragment {
         pageVm = new ViewModelProvider(this, CurrencyPageViewModel.factory(requireContext(), currency))
                 .get(CurrencyPageViewModel.class);
 
-        parentVm.period().observe(getViewLifecycleOwner(), p -> {
-            if (p != null) pageVm.reload(p);
-        });
-        parentVm.totals().observe(getViewLifecycleOwner(), this::renderBucket);
+        // Reload on either period change or custom-range change. Both paths go through
+        // a single helper that always reads the latest values from the parent VM, so
+        // we can't get stale (period, range) pairs.
+        parentVm.period().observe(getViewLifecycleOwner(), p -> reloadFromParent());
+        parentVm.customRange().observe(getViewLifecycleOwner(), r -> reloadFromParent());
+        // Card renders from two sources: current value/invested come from parent's
+        // all-time totals; windowed P&L breakdown is summed from the rows. Re-render
+        // when either updates so the card reacts to filter changes.
+        parentVm.totals().observe(getViewLifecycleOwner(), t -> renderBucket());
         pageVm.rows().observe(getViewLifecycleOwner(), list -> {
             adapter.submitList(list);
             binding.pageEmpty.setVisibility(
                     (list == null || list.isEmpty()) ? View.VISIBLE : View.GONE);
+            renderBucket();
         });
     }
 
@@ -101,8 +109,16 @@ public class CurrencyPageFragment extends Fragment {
         binding = null;
     }
 
-    private void renderBucket(@Nullable PortfolioTotals t) {
-        if (t == null || binding == null) return;
+    private void reloadFromParent() {
+        Period p = parentVm.period().getValue();
+        if (p == null) return;
+        pageVm.reload(p, parentVm.customRange().getValue());
+    }
+
+    private void renderBucket() {
+        if (binding == null) return;
+        PortfolioTotals t = parentVm.totals().getValue();
+        if (t == null) return;
         NativeBucket nb = t.bucketByCurrency.get(currency);
         if (nb == null) {
             binding.bucketValue.setText("");
@@ -115,24 +131,51 @@ public class CurrencyPageFragment extends Fragment {
         }
         String ccy = currency.name();
 
+        // Value + Invested are period-independent (current snapshot / lifetime capital).
         binding.bucketValue.setText(MONEY.format(nb.value) + " " + ccy);
         binding.bucketInvested.setText(getString(
                 R.string.totals_invested_label,
                 MONEY.format(nb.invested) + " " + ccy));
 
+        // P&L breakdown comes from the windowed rows (TradeRow already does the
+        // period-windowing for realized / unrealized / dividends). Falls back to
+        // bucket-level lifetime numbers if rows haven't loaded yet.
+        List<TradeRow> rows = pageVm.rows().getValue();
+        BigDecimal periodDividends;
+        BigDecimal periodRealized;
+        BigDecimal periodUnrealized;
+        BigDecimal periodPnl;
+        if (rows == null) {
+            periodDividends = nb.dividends;
+            periodRealized = nb.realizedPnl;
+            periodUnrealized = nb.unrealizedPnl;
+            periodPnl = nb.pnl;
+        } else {
+            periodDividends = BigDecimal.ZERO;
+            periodRealized = BigDecimal.ZERO;
+            periodUnrealized = BigDecimal.ZERO;
+            periodPnl = BigDecimal.ZERO;
+            for (TradeRow r : rows) {
+                periodDividends = periodDividends.add(r.windowDividends);
+                periodRealized = periodRealized.add(r.windowRealizedPnl);
+                periodUnrealized = periodUnrealized.add(r.windowUnrealizedPnl);
+                periodPnl = periodPnl.add(r.windowTotalPnl);
+            }
+        }
+
         String pnlText;
         if (nb.invested.signum() != 0) {
-            BigDecimal pct = nb.pnl.divide(nb.invested.abs(), PCT_MC).multiply(HUNDRED);
-            pnlText = SIGNED_MONEY.format(nb.pnl) + " " + ccy + " (" + PCT.format(pct) + ")";
+            BigDecimal pct = periodPnl.divide(nb.invested.abs(), PCT_MC).multiply(HUNDRED);
+            pnlText = SIGNED_MONEY.format(periodPnl) + " " + ccy + " (" + PCT.format(pct) + ")";
         } else {
-            pnlText = SIGNED_MONEY.format(nb.pnl) + " " + ccy;
+            pnlText = SIGNED_MONEY.format(periodPnl) + " " + ccy;
         }
         binding.bucketPnl.setText(pnlText);
-        binding.bucketPnl.setTextColor(colorFor(nb.pnl.signum()));
+        binding.bucketPnl.setTextColor(colorFor(periodPnl.signum()));
 
-        bindBreakdownRow(binding.bucketDividends, nb.dividends, ccy);
-        bindBreakdownRow(binding.bucketRealized, nb.realizedPnl, ccy);
-        bindBreakdownRow(binding.bucketUnrealized, nb.unrealizedPnl, ccy);
+        bindBreakdownRow(binding.bucketDividends, periodDividends, ccy);
+        bindBreakdownRow(binding.bucketRealized, periodRealized, ccy);
+        bindBreakdownRow(binding.bucketUnrealized, periodUnrealized, ccy);
     }
 
     private void bindBreakdownRow(@NonNull android.widget.TextView v, @NonNull BigDecimal amount, @NonNull String ccy) {

@@ -63,6 +63,10 @@
         <action
             android:id="@+id/action_settings_to_manualEvent"
             app:destination="@id/manualEventFragment" />
+
+        <action
+            android:id="@+id/action_settings_to_taxOverrides"
+            app:destination="@id/assetTaxOverridesFragment" />
     </fragment>
 
     <fragment
@@ -70,5 +74,11 @@
         android:name="com.my.finmon.ui.manualevent.ManualEventFragment"
         android:label="@string/manual_event_title"
         tools:layout="@layout/fragment_manual_event" />
+
+    <fragment
+        android:id="@+id/assetTaxOverridesFragment"
+        android:name="com.my.finmon.ui.settings.AssetTaxOverridesFragment"
+        android:label="@string/tax_overrides_title"
+        tools:layout="@layout/fragment_asset_tax_overrides" />
 
 </navigation>

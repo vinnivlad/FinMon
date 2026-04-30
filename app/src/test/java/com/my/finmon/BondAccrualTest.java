@@ -1,6 +1,6 @@
 package com.my.finmon;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
 
 import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.model.AssetType;
@@ -11,62 +11,63 @@ import com.my.finmon.domain.BondValuator;
 import org.junit.Test;
 
 import java.math.BigDecimal;
-import java.math.MathContext;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * Bond accrual with no coupons — simple-interest growth on face value, per lot, from
- * the lot's own acquisition timestamp. Pure BondValuator test, no DAOs.
+ * Bonds value at {@code face × Σ open_qty}, full stop — no synthetic mid-life
+ * accrual, no coupon subtraction (broker-aligned model adopted 2026-04-29). Premium
+ * or discount paid above/below face surfaces as constant unrealized P&amp;L during
+ * hold and converts to realized at sale or maturity.
  *
- * <p><b>Fixture:</b>
- * <pre>
- *   bond:   face = 1000, yield = 12%/yr, maturity 2030-01-01
- *   lot:    10 units acquired 2026-01-01 (paid price irrelevant — accrual is on face)
- *   asOf:   2026-07-01 (exactly 181 days elapsed)
- *   coupons received: none
- * </pre>
- *
- * <p>Days are counted via {@code ChronoUnit.DAYS} between the lot's acquisition and the
- * cutoff, then divided by 365 to convert to years. 181/365 = 0.495890... so:
- *
- * <p><b>Expected:</b> value = 1000 · 10 · (1 + 0.12 · 181/365) = 10000 · (1 + 0.0595068...)
- *                          ≈ 10595.07 UAH (within a few millicents of rounding).
+ * <p>This test pins the value to face regardless of holding time or coupons received.
  */
 public final class BondAccrualTest {
 
     @Test
-    public void singleLotSixMonthsNoCoupons() {
-        AssetEntity bond = new AssetEntity();
-        bond.id = 42;
-        bond.ticker = "OVDP-X";
-        bond.currency = Currency.UAH;
-        bond.type = AssetType.BOND;
-        bond.bondInitialPrice = new BigDecimal("1000");
-        bond.bondYieldPct = new BigDecimal("12");
-        bond.bondMaturityDate = LocalDate.of(2030, 1, 1);
-
+    public void valueIsFaceTimesQty_singleLot() {
+        AssetEntity bond = newBond();
         LocalDateTime acquired = LocalDate.of(2026, 1, 1).atStartOfDay();
         LocalDateTime asOf = LocalDate.of(2026, 7, 1).atStartOfDay();
-        // 181 days elapsed (2026 is not a leap year — Jan + Feb + Mar + Apr + May + Jun = 31+28+31+30+31+30 = 181).
 
         List<OpenLot> lots = Collections.singletonList(
-                new OpenLot(new BigDecimal("10"), new BigDecimal("950" /* paid */), acquired));
+                new OpenLot(new BigDecimal("10"), new BigDecimal("950"), acquired));
 
         BigDecimal value = BondValuator.valueOf(bond, lots, Collections.emptyList(), asOf);
 
-        // Expected via the formula, rounded for comparison: 10000 · (1 + 0.12 · 181/365)
-        MathContext mc = new MathContext(12, RoundingMode.HALF_UP);
-        BigDecimal years = new BigDecimal("181").divide(new BigDecimal("365"), mc);
-        BigDecimal expected = new BigDecimal("10000")
-                .multiply(BigDecimal.ONE.add(new BigDecimal("0.12").multiply(years, mc)), mc);
+        // 1000 face × 10 qty — no accrual contribution, no coupon contribution.
+        assertEquals(0, value.compareTo(new BigDecimal("10000")));
+    }
 
-        // Compare with reasonable tolerance — both values use MathContext(12, HALF_UP).
-        BigDecimal diff = value.subtract(expected).abs();
-        assertTrue("accrual within rounding tolerance, was diff=" + diff,
-                diff.compareTo(new BigDecimal("0.0001")) <= 0);
+    @Test
+    public void valueIsFaceTimesQty_multiLot() {
+        AssetEntity bond = newBond();
+        LocalDateTime t1 = LocalDate.of(2024, 1, 1).atStartOfDay();
+        LocalDateTime t2 = LocalDate.of(2025, 6, 1).atStartOfDay();
+        LocalDateTime asOf = LocalDate.of(2026, 4, 29).atStartOfDay();
+
+        List<OpenLot> lots = Arrays.asList(
+                new OpenLot(new BigDecimal("100"), new BigDecimal("1080"), t1),
+                new OpenLot(new BigDecimal("50"),  new BigDecimal("1100"), t2));
+
+        BigDecimal value = BondValuator.valueOf(bond, lots, Collections.emptyList(), asOf);
+
+        // 1000 × (100 + 50) — independent of acquisition dates and paid prices.
+        assertEquals(0, value.compareTo(new BigDecimal("150000")));
+    }
+
+    private static AssetEntity newBond() {
+        AssetEntity b = new AssetEntity();
+        b.id = 42;
+        b.ticker = "OVDP-X";
+        b.currency = Currency.UAH;
+        b.type = AssetType.BOND;
+        b.bondInitialPrice = new BigDecimal("1000");
+        b.bondYieldPct = new BigDecimal("12");
+        b.bondMaturityDate = LocalDate.of(2030, 1, 1);
+        return b;
     }
 }

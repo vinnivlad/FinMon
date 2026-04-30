@@ -19,6 +19,7 @@ import androidx.navigation.fragment.NavHostFragment;
 
 import com.google.android.material.snackbar.Snackbar;
 import com.my.finmon.R;
+import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.PortfolioRepository.Side;
 import com.my.finmon.databinding.FragmentAddTradeBinding;
 
@@ -90,12 +91,47 @@ public class AddTradeFragment extends Fragment {
         });
     }
 
+    /**
+     * Sentinel returned alongside the BUY/SELL strings to flag conversion mode.
+     * Kept in lock-step with the UI label so {@code text == CONVERT_MODE} is the
+     * authoritative check.
+     */
+    private static final String CONVERT_MODE_LABEL = "CONVERT";
+
     private void setupSideDropdown() {
-        String[] sides = { Side.BUY.name(), Side.SELL.name() };
+        String[] sides = { Side.BUY.name(), Side.SELL.name(), CONVERT_MODE_LABEL };
         binding.side.setAdapter(new ArrayAdapter<>(
                 requireContext(),
                 android.R.layout.simple_list_item_1,
                 sides));
+        binding.side.setOnItemClickListener((parent, v, position, id) -> applyMode(sides[position]));
+        binding.side.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                applyMode(s == null ? "" : s.toString());
+            }
+        });
+
+        // Currency dropdowns for conversion mode.
+        String[] currencies = new String[Currency.values().length];
+        for (int i = 0; i < currencies.length; i++) currencies[i] = Currency.values()[i].name();
+        binding.fromCurrency.setAdapter(new ArrayAdapter<>(
+                requireContext(), android.R.layout.simple_list_item_1, currencies));
+        binding.toCurrency.setAdapter(new ArrayAdapter<>(
+                requireContext(), android.R.layout.simple_list_item_1, currencies));
+    }
+
+    private boolean isConvertMode() {
+        return CONVERT_MODE_LABEL.equalsIgnoreCase(textOf(binding.side));
+    }
+
+    private void applyMode(@NonNull String sideText) {
+        boolean convert = CONVERT_MODE_LABEL.equalsIgnoreCase(sideText.trim());
+        binding.tradeFieldsGroup.setVisibility(convert ? View.GONE : View.VISIBLE);
+        binding.conversionFieldsGroup.setVisibility(convert ? View.VISIBLE : View.GONE);
+        // Empty-assets hint is only relevant for the BUY/SELL flow.
+        if (convert) binding.emptyAssetsHint.setVisibility(View.GONE);
     }
 
     private void setupDatePicker() {
@@ -182,7 +218,14 @@ public class AddTradeFragment extends Fragment {
 
     private void onSaveClicked() {
         clearFieldErrors();
+        if (isConvertMode()) {
+            saveConversion();
+        } else {
+            saveTrade();
+        }
+    }
 
+    private void saveTrade() {
         String sideStr = textOf(binding.side);
         String assetStr = textOf(binding.asset);
         String qtyStr = textOf(binding.quantity);
@@ -220,11 +263,57 @@ public class AddTradeFragment extends Fragment {
         vm.save(side, sel, qty, price, ts);
     }
 
+    private void saveConversion() {
+        String fromCcyStr = textOf(binding.fromCurrency);
+        String toCcyStr = textOf(binding.toCurrency);
+        String fromAmtStr = textOf(binding.fromAmount);
+        String toAmtStr = textOf(binding.toAmount);
+
+        boolean ok = true;
+        if (fromCcyStr.isEmpty()) { binding.fromCurrencyLayout.setError(getString(R.string.error_required)); ok = false; }
+        if (toCcyStr.isEmpty()) { binding.toCurrencyLayout.setError(getString(R.string.error_required)); ok = false; }
+        if (fromAmtStr.isEmpty()) { binding.fromAmountLayout.setError(getString(R.string.error_required)); ok = false; }
+        if (toAmtStr.isEmpty()) { binding.toAmountLayout.setError(getString(R.string.error_required)); ok = false; }
+        if (selectedDate == null) {
+            binding.tradeDateLayout.setError(getString(R.string.error_required)); ok = false;
+        }
+        if (!ok) return;
+
+        Currency fromCcy, toCcy;
+        try {
+            fromCcy = Currency.valueOf(fromCcyStr);
+            toCcy = Currency.valueOf(toCcyStr);
+        } catch (IllegalArgumentException e) {
+            Snackbar.make(binding.getRoot(), e.getMessage(), Snackbar.LENGTH_SHORT).show();
+            return;
+        }
+        if (fromCcy == toCcy) {
+            binding.toCurrencyLayout.setError(getString(R.string.error_same_currency));
+            return;
+        }
+
+        BigDecimal fromAmt, toAmt;
+        try {
+            fromAmt = new BigDecimal(fromAmtStr);
+            toAmt = new BigDecimal(toAmtStr);
+        } catch (NumberFormatException e) {
+            Snackbar.make(binding.getRoot(), getString(R.string.error_invalid_number), Snackbar.LENGTH_SHORT).show();
+            return;
+        }
+
+        LocalDateTime ts = LocalDateTime.of(selectedDate, LocalTime.NOON);
+        vm.saveConversion(fromCcy, fromAmt, toCcy, toAmt, ts);
+    }
+
     private void clearFieldErrors() {
         binding.sideLayout.setError(null);
         binding.assetLayout.setError(null);
         binding.quantityLayout.setError(null);
         binding.priceLayout.setError(null);
+        binding.fromCurrencyLayout.setError(null);
+        binding.fromAmountLayout.setError(null);
+        binding.toCurrencyLayout.setError(null);
+        binding.toAmountLayout.setError(null);
         binding.tradeDateLayout.setError(null);
     }
 

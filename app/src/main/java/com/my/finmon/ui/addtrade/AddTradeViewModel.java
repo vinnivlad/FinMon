@@ -182,6 +182,29 @@ public final class AddTradeViewModel extends ViewModel {
     }
 
     /**
+     * Records a cash conversion. Both legs ({@code CONVERSION_OUT} on source,
+     * {@code CONVERSION_IN} on target) land atomically via the repo.
+     */
+    public void saveConversion(
+            @NonNull Currency fromCurrency,
+            @NonNull BigDecimal fromAmount,
+            @NonNull Currency toCurrency,
+            @NonNull BigDecimal toAmount,
+            @NonNull LocalDateTime timestamp) {
+        viewExecutor.execute(() -> {
+            try {
+                portfolio.recordCashConversion(
+                        fromCurrency, fromAmount, toCurrency, toAmount, timestamp).get();
+                saved.postValue(true);
+            } catch (Exception e) {
+                Log.w(TAG, "saveConversion failed", e);
+                Throwable cause = (e.getCause() != null) ? e.getCause() : e;
+                error.postValue(cause.getMessage() != null ? cause.getMessage() : cause.toString());
+            }
+        });
+    }
+
+    /**
      * Upserts the asset behind a remote pick. For Yahoo stocks, currency comes from
      * a chart-meta lookup. For NBU bonds, all fields are already on the suggestion.
      * Returns -1 on failure (error already posted).

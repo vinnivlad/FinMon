@@ -65,4 +65,17 @@
         tools:text="+250.00 (+10.0%)"
         tools:textColor="@color/pnl_positive" />
 
+    <TextView
+        android:id="@+id/breakdownLine"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:alpha="0.7"
+        android:layout_marginTop="2dp"
+        app:layout_constraintTop_toBottomOf="@id/pnl"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:gravity="end"
+        tools:text="Realized 0 · Unrealized -28,802 · Dividends +149,604" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

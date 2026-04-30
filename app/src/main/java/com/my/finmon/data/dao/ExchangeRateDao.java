@@ -54,6 +54,9 @@ public interface ExchangeRateDao {
             + "ORDER BY date ASC")
     List<ExchangeRateEntity> getRange(Currency src, Currency tgt, LocalDate from, LocalDate to);
 
+    @Query("SELECT * FROM exchange_rate ORDER BY sourceCurrency, targetCurrency, date ASC")
+    List<ExchangeRateEntity> getAll();
+
     /** Wipes the whole table — used by the JSON import flow. */
     @Query("DELETE FROM exchange_rate")
     void deleteAll();

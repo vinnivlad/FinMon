@@ -33,6 +33,7 @@ public final class StartupSyncOrchestrator {
     public enum Stage {
         IDLE,
         STARTING,
+        IMPORTING,
         STOCK_PRICES,
         FX,
         BOND_COUPONS,
@@ -75,6 +76,9 @@ public final class StartupSyncOrchestrator {
     private final ExecutorService syncExecutor;
     private final MutableLiveData<Status> status = new MutableLiveData<>(Status.idle());
     private final AtomicBoolean running = new AtomicBoolean(false);
+    /** Set by {@link #runImport}; consulted by {@link #retry} so a Retry after a failed
+     *  import re-imports the same JSON instead of running the startup-sync path. */
+    @Nullable private volatile String pendingImportJson;
 
     public StartupSyncOrchestrator(@NonNull ServiceLocator sl, @NonNull Context appContext) {
         this.sl = sl;
@@ -112,7 +116,11 @@ public final class StartupSyncOrchestrator {
         Status current = status.getValue();
         if (current == null || current.stage != Stage.FAILED) return;
         if (!running.compareAndSet(false, true)) return;
-        kickOff();
+        if (pendingImportJson != null) {
+            kickOffImport();
+        } else {
+            kickOff();
+        }
     }
 
     /**
@@ -122,7 +130,48 @@ public final class StartupSyncOrchestrator {
     public void dismissAfterFailure() {
         Status current = status.getValue();
         if (current == null || current.stage != Stage.FAILED) return;
+        pendingImportJson = null;  // user chose to abandon a failed import
         status.postValue(new Status(Stage.DONE, 0, 0, "", null));
+    }
+
+    /**
+     * Drives a JSON import end-to-end: blocks the UI via the same overlay the startup
+     * sync uses, runs the import (DB wipe + restore + remote enrichment), then
+     * regenerates portfolio snapshots so the chart reflects the imported history
+     * immediately. Idempotent — concurrent calls are dropped.
+     */
+    public void runImport(@NonNull String json) {
+        if (!running.compareAndSet(false, true)) return;
+        pendingImportJson = json;
+        kickOffImport();
+    }
+
+    private void kickOffImport() {
+        status.postValue(new Status(Stage.IMPORTING, 0, 0, "", null));
+        syncExecutor.execute(() -> {
+            try {
+                String json = pendingImportJson;
+                if (json == null) {
+                    throw new IllegalStateException("runImport called without pending JSON");
+                }
+                // Phase A: import (wipe + restore + Yahoo/NBU/Frankfurter enrichment).
+                sl.importExportRepository().importFromJson(json).get();
+                // Phase B: snapshots — emit per-day progress through the same callback the
+                // startup sync uses, so the overlay shows a moving counter for the (often
+                // large) historical rebuild after a full re-import.
+                java.time.LocalDate yesterday = java.time.LocalDate.now().minusDays(1);
+                SyncEngine.syncPortfolioSnapshots(sl, yesterday, this::emit);
+                pendingImportJson = null;
+                status.postValue(new Status(Stage.DONE, 0, 0, "", null));
+            } catch (Exception e) {
+                Log.w(TAG, "import sync failed", e);
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                String msg = cause.getMessage() != null ? cause.getMessage() : cause.toString();
+                status.postValue(new Status(Stage.FAILED, 0, 0, "", msg));
+            } finally {
+                running.set(false);
+            }
+        });
     }
 
     private void kickOff() {

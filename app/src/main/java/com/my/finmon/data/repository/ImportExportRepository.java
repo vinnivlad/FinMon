@@ -16,6 +16,8 @@ import com.my.finmon.data.entity.EventEntity;
 import com.my.finmon.data.io.PortableAsset;
 import com.my.finmon.data.io.PortableEvent;
 import com.my.finmon.data.io.PortableExport;
+import com.my.finmon.data.io.PortableSettings;
+import com.my.finmon.prefs.UserPreferences;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.model.EventType;
@@ -63,8 +65,8 @@ public final class ImportExportRepository {
 
     private static final String TAG = "ImportExportRepository";
 
-    /** Bumped whenever the JSON shape changes incompatibly. */
-    public static final int CURRENT_VERSION = 1;
+    /** Bumped whenever the JSON shape changes incompatibly. v2 added the {@code settings} block + per-asset {@code taxRatePct}. */
+    public static final int CURRENT_VERSION = 2;
 
     private final FinMonDatabase db;
     private final AssetDao assetDao;
@@ -74,6 +76,7 @@ public final class ImportExportRepository {
     private final PortfolioValueDao portfolioValueDao;
     private final PortfolioRepository portfolio;
     private final MarketDataRepository marketData;
+    private final UserPreferences prefs;
     private final ExecutorService viewExecutor;
     private final Moshi moshi;
 
@@ -86,6 +89,7 @@ public final class ImportExportRepository {
             @NonNull PortfolioValueDao portfolioValueDao,
             @NonNull PortfolioRepository portfolio,
             @NonNull MarketDataRepository marketData,
+            @NonNull UserPreferences prefs,
             @NonNull ExecutorService viewExecutor,
             @NonNull Moshi moshi) {
         this.db = db;
@@ -96,6 +100,7 @@ public final class ImportExportRepository {
         this.portfolioValueDao = portfolioValueDao;
         this.portfolio = portfolio;
         this.marketData = marketData;
+        this.prefs = prefs;
         this.viewExecutor = viewExecutor;
         this.moshi = moshi;
     }
@@ -130,9 +135,15 @@ public final class ImportExportRepository {
             portableEvents.add(toPortable(e, asset, src));
         }
 
+        PortableSettings settings = new PortableSettings();
+        settings.displayCurrency = prefs.getDisplayCurrency().name();
+        settings.defaultStockTaxPct = prefs.getDefaultStockTaxPct().toPlainString();
+        settings.defaultBondTaxPct = prefs.getDefaultBondTaxPct().toPlainString();
+
         PortableExport export = new PortableExport();
         export.version = CURRENT_VERSION;
         export.exportedAt = LocalDateTime.now().toString();
+        export.settings = settings;
         export.assets = portableAssets;
         export.events = portableEvents;
 
@@ -152,6 +163,7 @@ public final class ImportExportRepository {
         p.bondMaturityDate = (a.bondMaturityDate != null) ? a.bondMaturityDate.toString() : null;
         p.bondInitialPrice = (a.bondInitialPrice != null) ? a.bondInitialPrice.toPlainString() : null;
         p.bondYieldPct = (a.bondYieldPct != null) ? a.bondYieldPct.toPlainString() : null;
+        p.taxRatePct = (a.taxRatePct != null) ? a.taxRatePct.toPlainString() : null;
         return p;
     }
 
@@ -233,6 +245,7 @@ public final class ImportExportRepository {
                 a.bondMaturityDate = parseDate(pa.bondMaturityDate);
                 a.bondInitialPrice = parseBigDecimal(pa.bondInitialPrice);
                 a.bondYieldPct = parseBigDecimal(pa.bondYieldPct);
+                a.taxRatePct = parseBigDecimal(pa.taxRatePct);
                 long id = assetDao.insert(a);
                 idByKey.put(key, id);
                 assetCount[0]++;
@@ -249,6 +262,11 @@ public final class ImportExportRepository {
             }
         });
 
+        // Settings restored AFTER the asset/event commit so a botched DB phase doesn't
+        // half-overwrite preferences. Missing fields → keep current values; this matters
+        // for v1 imports that don't carry a settings block at all.
+        applyImportedSettings(ex.settings);
+
         // Phase 2: enrichment runs OUTSIDE the transaction. Network calls + idempotent
         // ingest helpers fill in dividends / splits / coupons / prices / FX that the
         // import file was missing. Failures are logged and swallowed — a partial
@@ -256,6 +274,19 @@ public final class ImportExportRepository {
         int enriched = enrichAfterImport(ex);
 
         return new ImportResult(assetCount[0], eventCount[0], enriched);
+    }
+
+    private void applyImportedSettings(@Nullable PortableSettings s) {
+        if (s == null) return;
+        if (s.displayCurrency != null) {
+            try {
+                prefs.setDisplayCurrency(Currency.valueOf(s.displayCurrency));
+            } catch (IllegalArgumentException ignored) {}
+        }
+        BigDecimal stockPct = parseBigDecimal(s.defaultStockTaxPct);
+        if (stockPct != null) prefs.setDefaultStockTaxPct(stockPct);
+        BigDecimal bondPct = parseBigDecimal(s.defaultBondTaxPct);
+        if (bondPct != null) prefs.setDefaultBondTaxPct(bondPct);
     }
 
     /**

@@ -10,39 +10,34 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
- * Current value of a bond asset via the coupon-bond simple-interest model
- * (Option B, decided 2026-04-20):
+ * Bond market value (broker-aligned model, decided 2026-04-29):
  * <pre>
- *   value = Σ_lots (face × qty × (1 + yield · Δt_years))
- *         − Σ coupons_received
+ *   value = face × Σ open_qty
  * </pre>
  *
- * The bond's accrued value grows on the <em>face value</em> (not what the user paid),
- * per lot, from each lot's own acquisition timestamp. Coupons already received are
- * subtracted so the same money isn't counted twice (once in the cash pile, once in the
- * bond). Accrual time is capped at {@code bond.bondMaturityDate} — real bonds stop
- * accruing at maturity — but the coupon sum is <em>not</em> capped: post-maturity
- * payouts still count toward cash and therefore must still be subtracted from accrued.
+ * No mid-life synthetic accrual, no coupon subtraction. Bonds report at face value
+ * during hold; premium/discount paid above-or-below face surfaces as constant
+ * unrealized P&amp;L (= face × qty − cost), which converts to realized at the moment
+ * of sale or maturity (FIFO {@code (face − lot_price) × qty}). Coupons go to cash
+ * via DIVIDEND events as they always have.
  *
- * See {@code project_domain_model.md} for the full rationale.
+ * <p>This matches how brokerage statements report — the previous "sawtooth" formula
+ * (accrual minus paid coupons) was internally consistent but didn't line up with
+ * receipts. See {@code project_domain_model.md} for the full rationale.
+ *
+ * <p>The {@code couponsReceived} and {@code asOf} parameters are unused by the new
+ * formula but kept on the signature so existing call sites (and unit-test fixtures)
+ * compile unchanged.
  */
 public final class BondValuator {
 
     private static final MathContext MC = new MathContext(12, RoundingMode.HALF_UP);
-    private static final BigDecimal DAYS_PER_YEAR = new BigDecimal("365");
-    private static final BigDecimal PERCENT = new BigDecimal("100");
 
     private BondValuator() {}
 
-    /**
-     * {@code couponsReceived} must already be filtered to {@code IN} events where
-     * {@code incomeSourceAssetId = bond.id} and {@code timestamp <= asOf} (see
-     * {@code EventDao.getIncomeFromAssetAsOf}).
-     */
     @NonNull
     public static BigDecimal valueOf(
             @NonNull AssetEntity bond,
@@ -50,34 +45,14 @@ public final class BondValuator {
             @NonNull List<EventEntity> couponsReceived,
             @NonNull LocalDateTime asOf) {
 
-        if (bond.bondInitialPrice == null || bond.bondYieldPct == null) {
+        if (bond.bondInitialPrice == null) {
             throw new IllegalArgumentException(
-                    "Bond " + bond.id + " (" + bond.ticker + ") missing face or yield");
+                    "Bond " + bond.id + " (" + bond.ticker + ") missing face value");
         }
 
         BigDecimal face = bond.bondInitialPrice;
-        BigDecimal yieldFrac = bond.bondYieldPct.divide(PERCENT, MC);
-
-        LocalDateTime accrualCutoff = asOf;
-        if (bond.bondMaturityDate != null) {
-            LocalDateTime matAtEod = bond.bondMaturityDate.atTime(23, 59, 59);
-            if (accrualCutoff.isAfter(matAtEod)) accrualCutoff = matAtEod;
-        }
-
-        BigDecimal totalAccrued = BigDecimal.ZERO;
-        for (OpenLot lot : openLots) {
-            long days = ChronoUnit.DAYS.between(lot.acquiredAt, accrualCutoff);
-            if (days < 0) days = 0;  // acquired after cutoff — no accrual (defensive)
-
-            BigDecimal years = new BigDecimal(days).divide(DAYS_PER_YEAR, MC);
-            BigDecimal growth = BigDecimal.ONE.add(yieldFrac.multiply(years, MC));
-            BigDecimal lotValue = face.multiply(lot.qty, MC).multiply(growth, MC);
-            totalAccrued = totalAccrued.add(lotValue);
-        }
-
-        BigDecimal totalCoupons = BigDecimal.ZERO;
-        for (EventEntity c : couponsReceived) totalCoupons = totalCoupons.add(c.amount);
-
-        return totalAccrued.subtract(totalCoupons);
+        BigDecimal totalQty = BigDecimal.ZERO;
+        for (OpenLot lot : openLots) totalQty = totalQty.add(lot.qty);
+        return face.multiply(totalQty, MC);
     }
 }

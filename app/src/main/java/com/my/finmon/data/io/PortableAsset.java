@@ -21,4 +21,6 @@ public final class PortableAsset {
     public String bondMaturityDate;
     public String bondInitialPrice;
     public String bondYieldPct;
+    /** Per-asset tax rate override; null = use type default. */
+    public String taxRatePct;
 }

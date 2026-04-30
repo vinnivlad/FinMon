@@ -5,6 +5,7 @@ import android.view.View;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.navigation.NavController;
+import androidx.navigation.NavOptions;
 import androidx.navigation.fragment.NavHostFragment;
 import androidx.navigation.ui.AppBarConfiguration;
 import androidx.navigation.ui.NavigationUI;
@@ -38,7 +39,30 @@ public class MainActivity extends AppCompatActivity {
         ).build();
 
         BottomNavigationView bottomNav = binding.bottomNav;
+        // setupWithNavController also installs a destination-changed listener that keeps
+        // the selected tab in sync with the current destination — we keep that and only
+        // override the tap handler below so the multi-back-stack save/restore is bypassed.
         NavigationUI.setupWithNavController(bottomNav, navController);
+
+        // Default behavior (Navigation 2.4+): each tab keeps its own back stack and
+        // restores the deepest destination on re-selection. The user wants tab taps to
+        // always land on the tab's root, so we navigate with popUpTo=startDestination
+        // and disable saveState/restoreState.
+        bottomNav.setOnItemSelectedListener(item -> {
+            int destId = item.getItemId();
+            int startDest = navController.getGraph().getStartDestinationId();
+            NavOptions options = new NavOptions.Builder()
+                    .setLaunchSingleTop(true)
+                    .setRestoreState(false)
+                    .setPopUpTo(startDest, /* inclusive */ false, /* saveState */ false)
+                    .build();
+            try {
+                navController.navigate(destId, null, options);
+                return true;
+            } catch (IllegalArgumentException e) {
+                return false;
+            }
+        });
 
         orchestrator = ServiceLocator.get(this).startupSyncOrchestrator();
         orchestrator.status().observe(this, this::renderStartupStatus);
@@ -52,10 +76,14 @@ public class MainActivity extends AppCompatActivity {
 
         if (s.stage == Stage.DONE) {
             binding.startupOverlay.setVisibility(View.GONE);
+            binding.bottomNav.setVisibility(View.VISIBLE);
             return;
         }
 
+        // Hide the bottom nav explicitly: BottomNavigationView's default elevation lets
+        // it bleed through the overlay's z-order, so the overlay alone isn't enough.
         binding.startupOverlay.setVisibility(View.VISIBLE);
+        binding.bottomNav.setVisibility(View.GONE);
 
         boolean failed = (s.stage == Stage.FAILED);
         binding.startupProgress.setVisibility(failed ? View.GONE : View.VISIBLE);
@@ -87,6 +115,8 @@ public class MainActivity extends AppCompatActivity {
                 return getString(R.string.startup_initializing);
             case STARTING:
                 return getString(R.string.startup_starting);
+            case IMPORTING:
+                return getString(R.string.startup_stage_importing);
             case STOCK_PRICES:
                 if (s.totalItems > 0) {
                     return getString(R.string.startup_stage_stock_prices,

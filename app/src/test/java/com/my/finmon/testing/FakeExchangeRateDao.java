@@ -76,6 +76,18 @@ public final class FakeExchangeRateDao implements ExchangeRateDao {
     }
 
     @Override
+    public List<ExchangeRateEntity> getAll() {
+        List<ExchangeRateEntity> out = new ArrayList<>(rows.values());
+        out.sort((a, b) -> {
+            int bySrc = a.sourceCurrency.compareTo(b.sourceCurrency);
+            if (bySrc != 0) return bySrc;
+            int byTgt = a.targetCurrency.compareTo(b.targetCurrency);
+            return byTgt != 0 ? byTgt : a.date.compareTo(b.date);
+        });
+        return out;
+    }
+
+    @Override
     public void deleteAll() {
         rows.clear();
     }
