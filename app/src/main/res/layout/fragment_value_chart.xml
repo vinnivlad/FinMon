@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Value chart page (Charts → Value tab). Renders the user's portfolio value and
+    invested-capital lines over the global filter's window. Identical to the old
+    standalone Chart screen body.
+-->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -10,11 +15,14 @@
         android:id="@+id/totalsCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:visibility="gone"
         app:cardCornerRadius="12dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="visible">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -40,21 +48,12 @@
                 tools:text="12,345.67 USD" />
 
             <TextView
-                android:id="@+id/totalDisplayEquivalents"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceBodySmall"
-                android:alpha="0.7"
-                android:layout_marginTop="2dp"
-                tools:text="≈ 11,234.56 EUR · 456,789 UAH" />
-
-            <TextView
                 android:id="@+id/totalInvested"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textAppearance="?attr/textAppearanceBodyMedium"
                 android:alpha="0.8"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="6dp"
                 tools:text="Invested: 10,000.00 USD" />
 
             <TextView
@@ -64,28 +63,32 @@
                 android:textAppearance="?attr/textAppearanceTitleMedium"
                 android:textStyle="bold"
                 android:layout_marginTop="4dp"
-                tools:text="+2,345.67 (+23.5%)"
+                tools:text="Period P&amp;L: +123.45 USD (+1.2%)"
                 tools:textColor="@color/pnl_positive" />
-
-            <TextView
-                android:id="@+id/fxGapHint"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/totals_fx_gap_hint"
-                android:textAppearance="?attr/textAppearanceBodySmall"
-                android:alpha="0.6"
-                android:layout_marginTop="8dp"
-                android:visibility="gone" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/holdingsList"
+    <com.github.mikephil.charting.charts.LineChart
+        android:id="@+id/chart"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:clipToPadding="false"
-        android:paddingBottom="16dp"
+        android:paddingHorizontal="12dp"
+        android:paddingBottom="12dp"
         app:layout_constraintTop_toBottomOf="@id/totalsCard"
+        app:layout_constraintBottom_toTopOf="@id/fxGapHint"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/fxGapHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/totals_fx_gap_hint"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:alpha="0.7"
+        android:paddingHorizontal="16dp"
+        android:paddingBottom="12dp"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -94,25 +97,15 @@
         android:id="@+id/emptyState"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/portfolio_placeholder"
+        android:text="@string/chart_empty"
         android:textAppearance="?attr/textAppearanceBodyMedium"
         android:alpha="0.7"
         android:textAlignment="center"
         android:padding="32dp"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/totalsCard"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toTopOf="@id/chart"
+        app:layout_constraintBottom_toBottomOf="@id/chart"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        android:contentDescription="@string/fab_add"
-        android:src="@drawable/ic_add"
-        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

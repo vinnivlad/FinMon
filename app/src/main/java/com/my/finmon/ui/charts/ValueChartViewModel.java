@@ -1,4 +1,4 @@
-package com.my.finmon.ui.chart;
+package com.my.finmon.ui.charts;
 
 import android.content.Context;
 import android.util.Log;
@@ -18,6 +18,9 @@ import com.my.finmon.data.repository.PortfolioRepository.ConvertedSnapshot;
 import com.my.finmon.data.repository.PortfolioRepository.NativeBucket;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
 import com.my.finmon.prefs.UserPreferences;
+import com.my.finmon.ui.filter.FilterPeriod;
+import com.my.finmon.ui.filter.GlobalFilterViewModel;
+import com.my.finmon.ui.filter.GlobalFilterViewModel.CustomRange;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -26,28 +29,18 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Backs the global Chart tab. Two filter axes:
- * <ul>
- *   <li><b>Currency</b> — null = "All" (FX-converted into the user's display currency
- *       from settings); non-null = one of USD / EUR / UAH (native, no FX).</li>
- *   <li><b>Period</b> — one of {@link ChartPeriod}. {@link ChartPeriod#CUSTOM} pairs
- *       with {@link #customRange} for a user-picked {@code from..to}.</li>
- * </ul>
- *
- * <p>State is in-memory only. App restart resets to {@code (All, ALL_TIME)}.
+ * Backs the Charts → Value page. Plots portfolio value and invested-capital
+ * lines over the global filter's window. Reads filter axes (currency / period /
+ * customRange) from the Activity-scoped {@link GlobalFilterViewModel}.
  */
-public final class ChartViewModel extends ViewModel {
+public final class ValueChartViewModel extends ViewModel {
 
-    private static final String TAG = "ChartVM";
+    private static final String TAG = "ValueChartVM";
 
     private final PortfolioRepository repo;
     private final UserPreferences prefs;
+    private final GlobalFilterViewModel filter;
     private final ExecutorService viewExecutor;
-
-    /** {@code null} = "All" (FX-converted view). Otherwise the picked native currency. */
-    private final MutableLiveData<Currency> selectedCurrency = new MutableLiveData<>(null);
-    private final MutableLiveData<ChartPeriod> selectedPeriod = new MutableLiveData<>(ChartPeriod.ALL_TIME);
-    private final MutableLiveData<CustomRange> customRange = new MutableLiveData<>(null);
 
     private final MutableLiveData<ChartData> data = new MutableLiveData<>();
 
@@ -55,81 +48,64 @@ public final class ChartViewModel extends ViewModel {
      * Re-render when the user changes the display currency in Settings, but only when
      * the active filter is "All" (the FX-converted view). For a specific-currency
      * filter the chart is FX-free and Settings has no effect on it.
+     *
+     * <p>Initialized in the constructor (not as a field initializer) because it
+     * reads {@code this.filter}, which is itself only assigned in the constructor.
      */
-    private final Observer<Currency> displayCurrencyObserver = c -> {
-        if (selectedCurrency.getValue() == null) refresh();
-    };
+    private final Observer<Currency> displayCurrencyObserver;
 
-    public ChartViewModel(
+    /** Any global-filter axis change → re-fetch the series. */
+    private final Observer<Currency> filterCurrencyObserver = c -> refresh();
+    private final Observer<FilterPeriod> filterPeriodObserver = p -> refresh();
+    private final Observer<CustomRange> filterCustomRangeObserver = r -> refresh();
+
+    public ValueChartViewModel(
             @NonNull PortfolioRepository repo,
             @NonNull UserPreferences prefs,
+            @NonNull GlobalFilterViewModel filter,
             @NonNull ExecutorService viewExecutor) {
         this.repo = repo;
         this.prefs = prefs;
+        this.filter = filter;
         this.viewExecutor = viewExecutor;
+        this.displayCurrencyObserver = c -> {
+            if (filter.selectedCurrency().getValue() == null) refresh();
+        };
         prefs.displayCurrency().observeForever(displayCurrencyObserver);
+        filter.selectedCurrency().observeForever(filterCurrencyObserver);
+        filter.selectedPeriod().observeForever(filterPeriodObserver);
+        filter.customRange().observeForever(filterCustomRangeObserver);
     }
 
     @Override
     protected void onCleared() {
         prefs.displayCurrency().removeObserver(displayCurrencyObserver);
+        filter.selectedCurrency().removeObserver(filterCurrencyObserver);
+        filter.selectedPeriod().removeObserver(filterPeriodObserver);
+        filter.customRange().removeObserver(filterCustomRangeObserver);
         super.onCleared();
     }
 
     @NonNull public LiveData<ChartData> data() { return data; }
-    @NonNull public LiveData<Currency> selectedCurrency() { return selectedCurrency; }
-    @NonNull public LiveData<ChartPeriod> selectedPeriod() { return selectedPeriod; }
-    @NonNull public LiveData<CustomRange> customRange() { return customRange; }
-
-    public void setCurrency(@Nullable Currency currency) {
-        if (sameCurrency(selectedCurrency.getValue(), currency)) return;
-        selectedCurrency.setValue(currency);
-        refresh();
-    }
-
-    /** Picking any non-CUSTOM period clears the stored custom range. */
-    public void setPeriod(@NonNull ChartPeriod period) {
-        if (selectedPeriod.getValue() == period
-                && period != ChartPeriod.CUSTOM
-                && customRange.getValue() == null) {
-            return;
-        }
-        selectedPeriod.setValue(period);
-        if (period != ChartPeriod.CUSTOM) {
-            customRange.setValue(null);
-        }
-        refresh();
-    }
-
-    public void setCustomRange(@NonNull LocalDate from, @NonNull LocalDate to) {
-        // Defensive ordering — DateRangePicker is supposed to enforce from <= to but
-        // the API hands two epoch-millis values and we don't want a flipped fixture
-        // to create a negative-length window.
-        LocalDate lo = from.isAfter(to) ? to : from;
-        LocalDate hi = from.isAfter(to) ? from : to;
-        customRange.setValue(new CustomRange(lo, hi));
-        selectedPeriod.setValue(ChartPeriod.CUSTOM);
-        refresh();
-    }
 
     public void refresh() {
-        Currency currency = selectedCurrency.getValue();
-        ChartPeriod period = selectedPeriod.getValue();
-        CustomRange custom = customRange.getValue();
+        Currency currency = filter.selectedCurrency().getValue();
+        FilterPeriod period = filter.selectedPeriod().getValue();
+        CustomRange custom = filter.customRange().getValue();
 
         viewExecutor.execute(() -> {
             try {
                 LocalDate today = LocalDate.now();
                 LocalDate from;
                 LocalDate to;
-                if (period == ChartPeriod.CUSTOM && custom != null) {
+                if (period == FilterPeriod.CUSTOM && custom != null) {
                     from = custom.from;
                     // Cap "to" at today — if the user picks a future date, only history
                     // up to today exists. The right-edge live point still appends.
                     to = custom.to.isAfter(today) ? today : custom.to;
                 } else {
-                    ChartPeriod p = period != null ? period : ChartPeriod.ALL_TIME;
-                    from = p == ChartPeriod.CUSTOM ? today.minusYears(1) : p.windowStart(today);
+                    FilterPeriod p = period != null ? period : FilterPeriod.ALL_TIME;
+                    from = p == FilterPeriod.CUSTOM ? today.minusYears(1) : p.windowStart(today);
                     to = today;
                 }
 
@@ -184,24 +160,20 @@ public final class ChartViewModel extends ViewModel {
         });
     }
 
-    private static boolean sameCurrency(@Nullable Currency a, @Nullable Currency b) {
-        if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
-        return a == b;
-    }
-
     @NonNull
-    public static ViewModelProvider.Factory factory(@NonNull Context anyContext) {
+    public static ViewModelProvider.Factory factory(
+            @NonNull Context anyContext, @NonNull GlobalFilterViewModel globalFilter) {
         ServiceLocator sl = ServiceLocator.get(anyContext);
         return new ViewModelProvider.Factory() {
             @NonNull
             @Override
             @SuppressWarnings("unchecked")
             public <T extends ViewModel> T create(@NonNull Class<T> modelClass) {
-                if (modelClass.isAssignableFrom(ChartViewModel.class)) {
-                    return (T) new ChartViewModel(
+                if (modelClass.isAssignableFrom(ValueChartViewModel.class)) {
+                    return (T) new ValueChartViewModel(
                             sl.portfolioRepository(),
                             sl.userPreferences(),
+                            globalFilter,
                             sl.viewExecutor());
                 }
                 throw new IllegalArgumentException("Unknown ViewModel class: " + modelClass);
@@ -209,27 +181,17 @@ public final class ChartViewModel extends ViewModel {
         };
     }
 
-    public static final class CustomRange {
-        @NonNull public final LocalDate from;
-        @NonNull public final LocalDate to;
-
-        public CustomRange(@NonNull LocalDate from, @NonNull LocalDate to) {
-            this.from = from;
-            this.to = to;
-        }
-    }
-
     public static final class ChartData {
         /** Currency the {@code value}/{@code invested} fields are denominated in. */
         @NonNull public final Currency currency;
-        @NonNull public final ChartPeriod period;
+        @Nullable public final FilterPeriod period;
         @Nullable public final CustomRange customRange;
         @NonNull public final List<Point> points;
         public final boolean hasAnyGaps;
 
         public ChartData(
                 @NonNull Currency currency,
-                @NonNull ChartPeriod period,
+                @Nullable FilterPeriod period,
                 @Nullable CustomRange customRange,
                 @NonNull List<Point> points,
                 boolean hasAnyGaps) {
@@ -243,8 +205,9 @@ public final class ChartViewModel extends ViewModel {
         /**
          * End-of-period value, invested, and period P&amp;L. Drives the totals card
          * above the chart. Period P&amp;L is the change in (value − invested) over the
-         * window — which is correct in the project's "isolate market P&L from cash
-         * flows" sense: capital deposits during the window cancel from both sides.
+         * window — capital deposits during the window cancel from both sides, so this
+         * is correctly market-only in the project's "isolate market P&L from cash
+         * flows" sense.
          *
          * <p>Returns null when {@link #points} is empty.
          */

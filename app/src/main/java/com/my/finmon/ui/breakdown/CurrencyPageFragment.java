@@ -18,6 +18,8 @@ import com.my.finmon.data.repository.PortfolioRepository.NativeBucket;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
 import com.my.finmon.data.repository.PortfolioRepository.TradeRow;
 import com.my.finmon.databinding.FragmentCurrencyPageBinding;
+import com.my.finmon.ui.filter.FilterPeriod;
+import com.my.finmon.ui.filter.GlobalFilterViewModel;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -44,6 +46,7 @@ public class CurrencyPageFragment extends Fragment {
 
     private FragmentCurrencyPageBinding binding;
     private CurrencyBreakdownViewModel parentVm;
+    private GlobalFilterViewModel globalFilter;
     private CurrencyPageViewModel pageVm;
     private TradeRowAdapter adapter;
     private Currency currency;
@@ -82,15 +85,18 @@ public class CurrencyPageFragment extends Fragment {
 
         parentVm = new ViewModelProvider(requireParentFragment())
                 .get(CurrencyBreakdownViewModel.class);
+        globalFilter = new ViewModelProvider(
+                requireActivity(), GlobalFilterViewModel.factory(requireContext()))
+                .get(GlobalFilterViewModel.class);
 
         pageVm = new ViewModelProvider(this, CurrencyPageViewModel.factory(requireContext(), currency))
                 .get(CurrencyPageViewModel.class);
 
-        // Reload on either period change or custom-range change. Both paths go through
-        // a single helper that always reads the latest values from the parent VM, so
-        // we can't get stale (period, range) pairs.
-        parentVm.period().observe(getViewLifecycleOwner(), p -> reloadFromParent());
-        parentVm.customRange().observe(getViewLifecycleOwner(), r -> reloadFromParent());
+        // Reload rows on either period change or custom-range change. Both paths go
+        // through a single helper that reads the latest values from the global filter,
+        // so we can't get stale (period, range) pairs.
+        globalFilter.selectedPeriod().observe(getViewLifecycleOwner(), p -> reloadFromFilter());
+        globalFilter.customRange().observe(getViewLifecycleOwner(), r -> reloadFromFilter());
         // Card renders from two sources: current value/invested come from parent's
         // all-time totals; windowed P&L breakdown is summed from the rows. Re-render
         // when either updates so the card reacts to filter changes.
@@ -109,10 +115,10 @@ public class CurrencyPageFragment extends Fragment {
         binding = null;
     }
 
-    private void reloadFromParent() {
-        Period p = parentVm.period().getValue();
+    private void reloadFromFilter() {
+        FilterPeriod p = globalFilter.selectedPeriod().getValue();
         if (p == null) return;
-        pageVm.reload(p, parentVm.customRange().getValue());
+        pageVm.reload(p, globalFilter.customRange().getValue());
     }
 
     private void renderBucket() {
@@ -163,14 +169,17 @@ public class CurrencyPageFragment extends Fragment {
             }
         }
 
-        String pnlText;
+        StringBuilder pnlText = new StringBuilder();
+        pnlText.append(getString(R.string.chart_period_pnl_label))
+                .append(": ")
+                .append(SIGNED_MONEY.format(periodPnl))
+                .append(' ')
+                .append(ccy);
         if (nb.invested.signum() != 0) {
             BigDecimal pct = periodPnl.divide(nb.invested.abs(), PCT_MC).multiply(HUNDRED);
-            pnlText = SIGNED_MONEY.format(periodPnl) + " " + ccy + " (" + PCT.format(pct) + ")";
-        } else {
-            pnlText = SIGNED_MONEY.format(periodPnl) + " " + ccy;
+            pnlText.append(" (").append(PCT.format(pct)).append(')');
         }
-        binding.bucketPnl.setText(pnlText);
+        binding.bucketPnl.setText(pnlText.toString());
         binding.bucketPnl.setTextColor(colorFor(periodPnl.signum()));
 
         bindBreakdownRow(binding.bucketDividends, periodDividends, ccy);

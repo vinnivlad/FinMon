@@ -114,6 +114,17 @@ public abstract class EventDao {
     public abstract List<Long> findMaturedBondIds();
 
     /**
+     * Most recent date a DIVIDEND event was recorded for {@code sourceAssetId}. Used
+     * by {@code SyncEngine.syncBondCoupons} to skip the per-bond NBU walk when the
+     * bond's last coupon is recent enough that no new payments could plausibly be due.
+     * Returns null when the bond has never paid a coupon.
+     */
+    @Query("SELECT MAX(timestamp) FROM event "
+            + "WHERE incomeSourceAssetId = :sourceAssetId AND type = 'DIVIDEND'")
+    @Nullable
+    public abstract LocalDateTime findLatestDividendTimestamp(long sourceAssetId);
+
+    /**
      * Number of events at exactly {@code ts} whose asset is NOT cash. Used by the
      * portfolio-totals query to distinguish a trade-leg cash event (paired with a
      * stock/bond event at the same timestamp) from a standalone deposit or withdrawal.

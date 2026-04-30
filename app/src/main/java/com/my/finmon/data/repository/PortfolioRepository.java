@@ -18,6 +18,8 @@ import com.my.finmon.data.entity.StockPriceEntity;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.model.EventType;
+import com.my.finmon.data.remote.nbu.NbuBondDto;
+import com.my.finmon.data.remote.nbu.NbuClient;
 import com.my.finmon.domain.BondValuator;
 
 import java.math.BigDecimal;
@@ -31,6 +33,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -68,6 +71,8 @@ public final class PortfolioRepository {
     private final PortfolioValueDao portfolioValueDao;
     private final ExecutorService executor;
     private final TaxRates taxRates;
+    /** Optional — null in tests. {@link #getExpectedPayments} returns empty when null. */
+    @Nullable private final NbuClient nbuClient;
 
     public PortfolioRepository(
             @NonNull AssetDao assetDao,
@@ -77,7 +82,7 @@ public final class PortfolioRepository {
             @NonNull PortfolioValueDao portfolioValueDao,
             @NonNull ExecutorService executor) {
         this(assetDao, eventDao, stockPriceDao, exchangeRateDao, portfolioValueDao,
-                executor, TaxRates.ZERO);
+                executor, TaxRates.ZERO, null);
     }
 
     public PortfolioRepository(
@@ -88,6 +93,19 @@ public final class PortfolioRepository {
             @NonNull PortfolioValueDao portfolioValueDao,
             @NonNull ExecutorService executor,
             @NonNull TaxRates taxRates) {
+        this(assetDao, eventDao, stockPriceDao, exchangeRateDao, portfolioValueDao,
+                executor, taxRates, null);
+    }
+
+    public PortfolioRepository(
+            @NonNull AssetDao assetDao,
+            @NonNull EventDao eventDao,
+            @NonNull StockPriceDao stockPriceDao,
+            @NonNull ExchangeRateDao exchangeRateDao,
+            @NonNull PortfolioValueDao portfolioValueDao,
+            @NonNull ExecutorService executor,
+            @NonNull TaxRates taxRates,
+            @Nullable NbuClient nbuClient) {
         this.assetDao = assetDao;
         this.eventDao = eventDao;
         this.stockPriceDao = stockPriceDao;
@@ -95,6 +113,7 @@ public final class PortfolioRepository {
         this.portfolioValueDao = portfolioValueDao;
         this.executor = executor;
         this.taxRates = taxRates;
+        this.nbuClient = nbuClient;
     }
 
     /**
@@ -608,6 +627,73 @@ public final class PortfolioRepository {
     }
 
     /**
+     * Holdings as of {@code windowEnd} paired with windowed P&amp;L (dividends /
+     * realized / unrealized / total) computed from per-lot {@link TradeRow}s aggregated
+     * by asset. Drives the Portfolio screen when the global filter is active — for
+     * {@code FilterPeriod.ALL_TIME} the windowed numbers degenerate to lifetime values.
+     *
+     * <p>{@code currencyFilter} (when non-null) narrows the result to that single
+     * currency; null means "All" — every currency the user holds is included, each
+     * row's windowed P&amp;L stays in its asset's native currency. Cash piles always
+     * appear with zero windowed P&amp;L (cash has no per-window market dynamic).
+     */
+    @NonNull
+    public Future<List<WindowedHolding>> getWindowedHoldings(
+            @Nullable Currency currencyFilter,
+            @NonNull LocalDate windowStart,
+            @NonNull LocalDate windowEnd) {
+        return executor.submit(() ->
+                computeWindowedHoldingsSync(currencyFilter, windowStart, windowEnd));
+    }
+
+    private List<WindowedHolding> computeWindowedHoldingsSync(
+            @Nullable Currency currencyFilter,
+            @NonNull LocalDate windowStart,
+            @NonNull LocalDate windowEnd) {
+        List<Holding> snapshot = computeHoldingsSync(windowEnd);
+
+        // Decide which currencies need a TradeRow pass. For All we hit every currency
+        // the user actually holds non-cash assets in; for a specific filter we only
+        // need that one. Cash piles never need a TradeRow pass.
+        EnumSet<Currency> currenciesToProcess = EnumSet.noneOf(Currency.class);
+        if (currencyFilter != null) {
+            currenciesToProcess.add(currencyFilter);
+        } else {
+            for (Holding h : snapshot) {
+                if (h.asset.type != AssetType.CASH) {
+                    currenciesToProcess.add(h.asset.currency);
+                }
+            }
+        }
+
+        // Per-asset accumulators: [dividends, realized, unrealized, total].
+        Map<Long, BigDecimal[]> windowByAsset = new HashMap<>();
+        for (Currency c : currenciesToProcess) {
+            List<TradeRow> rows = computeTradeRowsSync(c, windowStart, windowEnd);
+            for (TradeRow r : rows) {
+                BigDecimal[] sums = windowByAsset.computeIfAbsent(r.assetId,
+                        k -> new BigDecimal[]{
+                                BigDecimal.ZERO, BigDecimal.ZERO,
+                                BigDecimal.ZERO, BigDecimal.ZERO });
+                sums[0] = sums[0].add(r.windowDividends);
+                sums[1] = sums[1].add(r.windowRealizedPnl);
+                sums[2] = sums[2].add(r.windowUnrealizedPnl);
+                sums[3] = sums[3].add(r.windowTotalPnl);
+            }
+        }
+
+        BigDecimal[] zeroes = {
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO };
+        List<WindowedHolding> out = new ArrayList<>(snapshot.size());
+        for (Holding h : snapshot) {
+            if (currencyFilter != null && h.asset.currency != currencyFilter) continue;
+            BigDecimal[] sums = windowByAsset.getOrDefault(h.asset.id, zeroes);
+            out.add(new WindowedHolding(h, sums[0], sums[1], sums[2], sums[3]));
+        }
+        return out;
+    }
+
+    /**
      * Portfolio-wide totals as of {@code asOf}:
      * <ul>
      *   <li>{@code valueInBase} / {@code investedInBase} / {@code pnlInBase} — the
@@ -630,6 +716,199 @@ public final class PortfolioRepository {
     }
 
     /**
+     * Future-only coupon and maturity payments expected on every active bond. Used by
+     * the Bonds screen for the Expected Payments card and the Calendar's payment-date
+     * markers. {@code currencyFilter}, when non-null, narrows to that currency's bonds.
+     *
+     * <p>For each bond with a non-blank ISIN, current open quantity, and no MATURITY
+     * event yet recorded:
+     * <ul>
+     *   <li>Coupons (NBU {@code pay_type=1}, future dates only) — amount per row is
+     *       {@code openQty × pay_val}, with {@link #applyTax} applied so the figure
+     *       matches what {@link #ingestBondCouponsSync} would actually credit on the
+     *       payment day.</li>
+     *   <li>Principal (NBU {@code pay_type=2}, future dates only) — amount is
+     *       {@code openQty × face} (face = {@code asset.bondInitialPrice}). Maturity
+     *       payouts aren't taxed.</li>
+     * </ul>
+     *
+     * <p>{@link ExpectedPaymentsResult#totalsByCurrency} groups amounts by native
+     * currency; {@link ExpectedPaymentsResult#totalInBase} converts each row to
+     * {@link #BASE_CURRENCY} via FX on {@code asOf} (good-enough proxy — actual FX
+     * on the future payment date is unknowable). {@code hasFxGaps} flags rows whose
+     * base conversion failed for lack of an FX row.
+     *
+     * <p>Returns an empty result if {@link #nbuClient} is null (e.g. unit-test fixture).
+     */
+    @NonNull
+    public Future<ExpectedPaymentsResult> getExpectedPayments(
+            @NonNull LocalDate asOf, @Nullable Currency currencyFilter) {
+        return executor.submit(() -> computeExpectedPaymentsSync(asOf, currencyFilter));
+    }
+
+    /**
+     * Past + future coupon/maturity timeline for a single bond — drives the bond
+     * detail dialog. Past entries come straight from the event log (DIVIDEND/MATURITY
+     * cash events with {@code incomeSourceAssetId = bondId}). Future entries come
+     * from NBU's schedule, filtered to dates {@code >= asOf} and computed against
+     * the bond's current open quantity. Both lists merged and sorted ascending.
+     */
+    @NonNull
+    public Future<BondTimeline> getBondTimeline(long bondAssetId, @NonNull LocalDate asOf) {
+        return executor.submit(() -> computeBondTimelineSync(bondAssetId, asOf));
+    }
+
+    private BondTimeline computeBondTimelineSync(long bondAssetId, @NonNull LocalDate asOf) {
+        AssetEntity bond = assetDao.findById(bondAssetId);
+        List<BondTimelineEntry> entries = new ArrayList<>();
+        if (bond == null || bond.type != AssetType.BOND) {
+            return new BondTimeline(bond, entries);
+        }
+
+        // Past inflow events (DIVIDEND coupons and MATURITY principal).
+        for (EventEntity ev : eventDao.getIncomeFromAssetAsOf(bondAssetId, LocalDateTime.now())) {
+            if (ev.type != EventType.DIVIDEND && ev.type != EventType.MATURITY) continue;
+            entries.add(new BondTimelineEntry(
+                    ev.timestamp.toLocalDate(),
+                    ev.amount,
+                    ev.type,
+                    /* paid */ true));
+        }
+
+        // Future schedule from NBU. If the bond's already redeemed (MATURITY recorded)
+        // there's nothing to project — bail before hitting NBU.
+        if (nbuClient != null
+                && bond.isin != null && !bond.isin.isBlank()
+                && eventDao.findMaturityForAsset(bondAssetId) == null) {
+
+            LocalDateTime upTo = endOfDay(asOf);
+            FifoResult fifo = computeFifo(eventDao.getByAssetAsOf(bondAssetId, upTo));
+            BigDecimal openQty = fifo.openQty;
+            if (openQty.signum() > 0) {
+                NbuBondDto dto;
+                try {
+                    dto = nbuClient.findByIsin(bond.isin);
+                } catch (Exception e) {
+                    Log.w("PortfolioRepo", "NBU lookup failed for " + bond.ticker, e);
+                    dto = null;
+                }
+                if (dto != null && dto.payments != null) {
+                    BigDecimal taxRate = effectiveTaxRatePct(bond);
+                    for (NbuBondDto.Payment p : dto.payments) {
+                        if (p == null || p.pay_date == null) continue;
+                        LocalDate d;
+                        try {
+                            d = LocalDate.parse(p.pay_date);
+                        } catch (Exception ex) {
+                            continue;
+                        }
+                        if (d.isBefore(asOf)) continue;
+
+                        BigDecimal amount;
+                        EventType type;
+                        if ("1".equals(p.pay_type)) {
+                            if (p.pay_val == null) continue;
+                            BigDecimal gross = openQty.multiply(
+                                    new BigDecimal(p.pay_val.toString()));
+                            amount = applyTax(gross, taxRate);
+                            type = EventType.DIVIDEND;
+                        } else if ("2".equals(p.pay_type)) {
+                            if (bond.bondInitialPrice == null) continue;
+                            amount = openQty.multiply(bond.bondInitialPrice);
+                            type = EventType.MATURITY;
+                        } else {
+                            continue;
+                        }
+                        entries.add(new BondTimelineEntry(d, amount, type, /* paid */ false));
+                    }
+                }
+            }
+        }
+
+        entries.sort(Comparator.comparing((BondTimelineEntry e) -> e.date));
+        return new BondTimeline(bond, entries);
+    }
+
+    private ExpectedPaymentsResult computeExpectedPaymentsSync(
+            @NonNull LocalDate asOf, @Nullable Currency currencyFilter) {
+        List<ExpectedPayment> rows = new ArrayList<>();
+        Map<Currency, BigDecimal> totalsByCurrency = new EnumMap<>(Currency.class);
+        BigDecimal totalInBase = BigDecimal.ZERO;
+        boolean hasFxGaps = false;
+
+        if (nbuClient == null) {
+            return new ExpectedPaymentsResult(
+                    rows, totalsByCurrency, totalInBase, BASE_CURRENCY, hasFxGaps);
+        }
+
+        LocalDateTime upTo = endOfDay(asOf);
+        for (AssetEntity asset : assetDao.findByType(AssetType.BOND)) {
+            if (asset.isin == null || asset.isin.isBlank()) continue;
+            if (currencyFilter != null && asset.currency != currencyFilter) continue;
+            if (eventDao.findMaturityForAsset(asset.id) != null) continue;
+
+            List<EventEntity> events = eventDao.getByAssetAsOf(asset.id, upTo);
+            FifoResult fifo = computeFifo(events);
+            BigDecimal openQty = fifo.openQty;
+            if (openQty.signum() <= 0) continue;
+
+            NbuBondDto dto;
+            try {
+                dto = nbuClient.findByIsin(asset.isin);
+            } catch (Exception e) {
+                Log.w("PortfolioRepo", "NBU lookup failed for " + asset.ticker, e);
+                continue;
+            }
+            if (dto == null || dto.payments == null) continue;
+
+            BigDecimal taxRate = effectiveTaxRatePct(asset);
+
+            for (NbuBondDto.Payment p : dto.payments) {
+                if (p == null || p.pay_date == null) continue;
+                LocalDate d;
+                try {
+                    d = LocalDate.parse(p.pay_date);
+                } catch (Exception ex) {
+                    continue;
+                }
+                if (d.isBefore(asOf)) continue;  // past — already paid (or missed)
+
+                BigDecimal amount;
+                EventType type;
+                if ("1".equals(p.pay_type)) {
+                    if (p.pay_val == null) continue;
+                    BigDecimal gross = openQty.multiply(new BigDecimal(p.pay_val.toString()));
+                    amount = applyTax(gross, taxRate);
+                    type = EventType.DIVIDEND;
+                } else if ("2".equals(p.pay_type)) {
+                    if (asset.bondInitialPrice == null) continue;
+                    amount = openQty.multiply(asset.bondInitialPrice);
+                    type = EventType.MATURITY;
+                } else {
+                    continue;
+                }
+
+                rows.add(new ExpectedPayment(
+                        asset.id, asset.ticker, asset.currency, d, amount, type));
+
+                totalsByCurrency.merge(asset.currency, amount, BigDecimal::add);
+
+                BigDecimal inBase = convert(amount, asset.currency, BASE_CURRENCY, asOf);
+                if (inBase == null) {
+                    hasFxGaps = true;
+                } else {
+                    totalInBase = totalInBase.add(inBase);
+                }
+            }
+        }
+
+        rows.sort(Comparator.comparing((ExpectedPayment ep) -> ep.date)
+                .thenComparing(ep -> ep.ticker));
+        return new ExpectedPaymentsResult(
+                rows, totalsByCurrency, totalInBase, BASE_CURRENCY, hasFxGaps);
+    }
+
+    /**
      * Three-axis breakdown of the portfolio's current value, all converted to
      * {@code displayCurrency} so slice ratios are comparable. Drives the analytics-pie
      * tab. Slices with non-positive values are filtered out — pie charts can't render
@@ -643,6 +922,19 @@ public final class PortfolioRepository {
     @NonNull
     public Future<AnalyticsBreakdown> getAnalyticsAsOf(
             @NonNull LocalDate asOf, @NonNull Currency displayCurrency) {
+        return getAnalyticsAsOf(asOf, displayCurrency, null);
+    }
+
+    /**
+     * Variant with an optional {@code currencyFilter}. When non-null, only holdings
+     * in that currency are included — used by the global filter so picking a
+     * specific currency on Portfolio narrows the Analytics pies to that bucket.
+     */
+    @NonNull
+    public Future<AnalyticsBreakdown> getAnalyticsAsOf(
+            @NonNull LocalDate asOf,
+            @NonNull Currency displayCurrency,
+            @Nullable Currency currencyFilter) {
         return executor.submit(() -> {
             List<Holding> holdings = computeHoldingsSync(asOf);
 
@@ -655,6 +947,7 @@ public final class PortfolioRepository {
 
             for (Holding h : holdings) {
                 if (h.marketValue == null || h.marketValue.signum() == 0) continue;
+                if (currencyFilter != null && h.asset.currency != currencyFilter) continue;
 
                 BigDecimal inDisplay = convert(
                         h.marketValue, h.asset.currency, displayCurrency, asOf);
@@ -1768,6 +2061,129 @@ public final class PortfolioRepository {
             this.marketValue = marketValue;
             this.lifetimeDividends = lifetimeDividends;
             this.lifetimeRealizedPnl = lifetimeRealizedPnl;
+        }
+    }
+
+    /**
+     * A {@link Holding} paired with its windowed P&amp;L (realized + unrealized +
+     * dividends over a {@code [windowStart, windowEnd]} range, summed across all the
+     * asset's lots). Drives the Portfolio screen when the global filter is active —
+     * the existing lifetime fields on {@link Holding} stay accessible for callers
+     * that don't need windowing.
+     */
+    public static final class WindowedHolding {
+        @NonNull public final Holding holding;
+        @NonNull public final BigDecimal windowDividends;
+        @NonNull public final BigDecimal windowRealizedPnl;
+        @NonNull public final BigDecimal windowUnrealizedPnl;
+        /** {@code dividends + realized + unrealized} — agrees with summed TradeRow. */
+        @NonNull public final BigDecimal windowTotalPnl;
+
+        public WindowedHolding(
+                @NonNull Holding holding,
+                @NonNull BigDecimal windowDividends,
+                @NonNull BigDecimal windowRealizedPnl,
+                @NonNull BigDecimal windowUnrealizedPnl,
+                @NonNull BigDecimal windowTotalPnl) {
+            this.holding = holding;
+            this.windowDividends = windowDividends;
+            this.windowRealizedPnl = windowRealizedPnl;
+            this.windowUnrealizedPnl = windowUnrealizedPnl;
+            this.windowTotalPnl = windowTotalPnl;
+        }
+    }
+
+    /**
+     * Expected future inflow from one of an active bond's NBU schedule rows. Used by
+     * the Bonds screen for the Expected Payments card and the Calendar markers.
+     * {@code amount} is in the bond's native currency, post-tax for coupons.
+     */
+    public static final class ExpectedPayment {
+        public final long bondAssetId;
+        @NonNull public final String ticker;
+        @NonNull public final Currency currency;
+        @NonNull public final LocalDate date;
+        @NonNull public final BigDecimal amount;
+        /** Either {@link EventType#DIVIDEND} (coupon) or {@link EventType#MATURITY}. */
+        @NonNull public final EventType type;
+
+        public ExpectedPayment(
+                long bondAssetId,
+                @NonNull String ticker,
+                @NonNull Currency currency,
+                @NonNull LocalDate date,
+                @NonNull BigDecimal amount,
+                @NonNull EventType type) {
+            this.bondAssetId = bondAssetId;
+            this.ticker = ticker;
+            this.currency = currency;
+            this.date = date;
+            this.amount = amount;
+            this.type = type;
+        }
+    }
+
+    /**
+     * One row in {@link BondTimeline}. Past entries ({@code paid=true}) come from
+     * recorded events; future entries ({@code paid=false}) come from the NBU schedule
+     * scaled by the bond's current open quantity.
+     */
+    public static final class BondTimelineEntry {
+        @NonNull public final LocalDate date;
+        @NonNull public final BigDecimal amount;
+        @NonNull public final EventType type;
+        public final boolean paid;
+
+        public BondTimelineEntry(
+                @NonNull LocalDate date,
+                @NonNull BigDecimal amount,
+                @NonNull EventType type,
+                boolean paid) {
+            this.date = date;
+            this.amount = amount;
+            this.type = type;
+            this.paid = paid;
+        }
+    }
+
+    /**
+     * Past + future coupon/maturity timeline for a single bond. Drives the bond
+     * detail dialog opened by tapping a bond row.
+     */
+    public static final class BondTimeline {
+        @androidx.annotation.Nullable public final AssetEntity bond;
+        @NonNull public final List<BondTimelineEntry> entries;
+
+        public BondTimeline(
+                @androidx.annotation.Nullable AssetEntity bond,
+                @NonNull List<BondTimelineEntry> entries) {
+            this.bond = bond;
+            this.entries = entries;
+        }
+    }
+
+    /**
+     * Wrapper around a list of {@link ExpectedPayment} plus pre-aggregated totals so
+     * the UI doesn't need to walk the rows twice.
+     */
+    public static final class ExpectedPaymentsResult {
+        @NonNull public final List<ExpectedPayment> payments;
+        @NonNull public final Map<Currency, BigDecimal> totalsByCurrency;
+        @NonNull public final BigDecimal totalInBase;
+        @NonNull public final Currency baseCurrency;
+        public final boolean hasFxGaps;
+
+        public ExpectedPaymentsResult(
+                @NonNull List<ExpectedPayment> payments,
+                @NonNull Map<Currency, BigDecimal> totalsByCurrency,
+                @NonNull BigDecimal totalInBase,
+                @NonNull Currency baseCurrency,
+                boolean hasFxGaps) {
+            this.payments = payments;
+            this.totalsByCurrency = totalsByCurrency;
+            this.totalInBase = totalInBase;
+            this.baseCurrency = baseCurrency;
+            this.hasFxGaps = hasFxGaps;
         }
     }
 

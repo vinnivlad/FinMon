@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Body for the bond detail dialog. Yield + maturity at the top, then a scrollable
+     list of coupon/maturity entries (past = greyed, future = standard). The dialog
+     title carries ticker + name; the ALertDialog frame provides corners + elevation. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="24dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="16dp">
+
+        <TextView
+            android:id="@+id/bondYield"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            tools:text="Yield: 11.67%" />
+
+        <TextView
+            android:id="@+id/bondMaturity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            tools:text="Maturity: 2026-12-31" />
+
+        <TextView
+            android:id="@+id/bondPaidSum"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            tools:text="Already received: 245.30 UAH" />
+
+        <TextView
+            android:id="@+id/bondExpectedSum"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            tools:text="Expected: 1,210.00 UAH" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginVertical="12dp"
+            android:background="?attr/colorOutlineVariant" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/bond_detail_schedule_label"
+            android:textAppearance="?attr/textAppearanceLabelSmall"
+            android:alpha="0.7"
+            android:textAllCaps="true" />
+
+        <LinearLayout
+            android:id="@+id/bondCouponList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="6dp" />
+
+        <TextView
+            android:id="@+id/bondCouponEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/bond_detail_schedule_empty"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:alpha="0.7"
+            android:visibility="gone"
+            tools:visibility="visible" />
+    </LinearLayout>
+</ScrollView>

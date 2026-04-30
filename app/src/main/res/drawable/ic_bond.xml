@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Bond / treasury column icon — the classic "account_balance" Material symbol.
+    Three columns + roof + base step, filled with the inherited tint so it picks up
+    the bottom-nav's selectedItemTintList automatically.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M4,10v7h3v-7H4zM10,10v7h3v-7H10zM2,22h19v-3H2v3zM16,10v7h3v-7h-3zM11.5,1L2,6v2h19V6L11.5,1z" />
+</vector>

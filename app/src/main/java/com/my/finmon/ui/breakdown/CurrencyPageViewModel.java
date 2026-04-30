@@ -14,7 +14,8 @@ import com.my.finmon.ServiceLocator;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.PortfolioRepository;
 import com.my.finmon.data.repository.PortfolioRepository.TradeRow;
-import com.my.finmon.ui.breakdown.CurrencyBreakdownViewModel.CustomRange;
+import com.my.finmon.ui.filter.FilterPeriod;
+import com.my.finmon.ui.filter.GlobalFilterViewModel.CustomRange;
 
 import java.time.LocalDate;
 import java.util.Collections;
@@ -24,12 +25,11 @@ import java.util.concurrent.ExecutorService;
 
 /**
  * Per-currency page VM. Owns the trade-row list for one {@link Currency}, re-queried
- * whenever the parent's period filter changes ({@link #reload(Period)}). The page's
- * aggregate header (value / invested / P&amp;L / dividends / realized / unrealized)
- * is read from the parent's {@code PortfolioTotals} LiveData directly in the fragment.
+ * via {@link #reload(FilterPeriod, CustomRange)} when the global filter changes.
  *
- * <p>The per-currency time-series chart that briefly lived here was removed when the
- * global Chart tab grew its own currency filter (2026-04-28) — see {@code ChartFragment}.
+ * <p>The aggregate header (value / invested / P&amp;L / dividends / realized /
+ * unrealized) is read from the parent's {@code PortfolioTotals} LiveData directly
+ * in the fragment.
  */
 public final class CurrencyPageViewModel extends ViewModel {
 
@@ -40,7 +40,7 @@ public final class CurrencyPageViewModel extends ViewModel {
     private final Currency currency;
 
     private final MutableLiveData<List<TradeRow>> rows = new MutableLiveData<>(Collections.emptyList());
-    private Period lastPeriod;
+    private FilterPeriod lastPeriod;
     @Nullable private CustomRange lastRange;
 
     public CurrencyPageViewModel(
@@ -55,10 +55,10 @@ public final class CurrencyPageViewModel extends ViewModel {
     @NonNull public LiveData<List<TradeRow>> rows() { return rows; }
     @NonNull public Currency currency() { return currency; }
 
-    public void reload(@NonNull Period p, @Nullable CustomRange range) {
+    public void reload(@NonNull FilterPeriod p, @Nullable CustomRange range) {
         // CUSTOM is the only period that uses an external range; for non-CUSTOM the
         // range argument is irrelevant and won't trigger a reload on its own.
-        boolean rangeChanged = (p == Period.CUSTOM) && !sameRange(range, lastRange);
+        boolean rangeChanged = (p == FilterPeriod.CUSTOM) && !sameRange(range, lastRange);
         if (p == lastPeriod && !rangeChanged) return;
         lastPeriod = p;
         lastRange = range;
@@ -68,10 +68,10 @@ public final class CurrencyPageViewModel extends ViewModel {
                 LocalDate today = LocalDate.now();
                 LocalDate from;
                 LocalDate to;
-                if (p == Period.CUSTOM) {
+                if (p == FilterPeriod.CUSTOM) {
                     if (range == null) {
                         // No range picked yet — render empty rather than running with a
-                        // bogus default. The picker fragment-side will set one shortly.
+                        // bogus default. The picker will set one shortly.
                         rows.postValue(Collections.emptyList());
                         return;
                     }

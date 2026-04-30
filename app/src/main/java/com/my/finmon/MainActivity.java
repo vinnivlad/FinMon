@@ -5,7 +5,12 @@ import android.view.View;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.navigation.NavController;
+import androidx.navigation.NavDestination;
 import androidx.navigation.NavOptions;
 import androidx.navigation.fragment.NavHostFragment;
 import androidx.navigation.ui.AppBarConfiguration;
@@ -16,12 +21,26 @@ import com.my.finmon.databinding.ActivityMainBinding;
 import com.my.finmon.sync.StartupSyncOrchestrator;
 import com.my.finmon.sync.StartupSyncOrchestrator.Stage;
 import com.my.finmon.sync.StartupSyncOrchestrator.Status;
+import com.my.finmon.ui.filter.GlobalFilterBinder;
+import com.my.finmon.ui.filter.GlobalFilterViewModel;
+
+import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
 
     private ActivityMainBinding binding;
     private StartupSyncOrchestrator orchestrator;
     private NavController navController;
+    private GlobalFilterViewModel filterVm;
+
+    /** Destinations where the global filter bar is visible. Anything else (Market,
+     *  Settings, modal sub-screens like AddTrade) hides the bar. */
+    private static final Set<Integer> FILTER_DESTINATIONS = Set.of(
+            R.id.portfolioFragment,
+            R.id.bondsFragment,
+            R.id.currencyBreakdownFragment,
+            R.id.chartsFragment
+    );
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -29,15 +48,27 @@ public class MainActivity extends AppCompatActivity {
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
+        // targetSdk 36 is edge-to-edge by default — the system bars draw transparent
+        // over the activity, so without this padding the global filter chips would
+        // sit under the status bar / camera cutout. Applying systemBars insets to the
+        // root means whichever child sits topmost (filter bar, or nav host when the
+        // filter is hidden on Market/Settings) gets the breathing room.
+        ViewCompat.setOnApplyWindowInsetsListener(binding.getRoot(), (v, insets) -> {
+            Insets sys = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(sys.left, sys.top, sys.right, sys.bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
+
         NavHostFragment navHost = (NavHostFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.nav_host_fragment);
         navController = navHost.getNavController();
 
         AppBarConfiguration appBarConfig = new AppBarConfiguration.Builder(
                 R.id.portfolioFragment,
-                R.id.chartFragment,
-                R.id.marketFragment,
-                R.id.settingsFragment
+                R.id.bondsFragment,
+                R.id.currencyBreakdownFragment,
+                R.id.chartsFragment,
+                R.id.marketFragment
         ).build();
 
         BottomNavigationView bottomNav = binding.bottomNav;
@@ -71,6 +102,43 @@ public class MainActivity extends AppCompatActivity {
 
         binding.startupRetry.setOnClickListener(v -> orchestrator.retry());
         binding.startupContinue.setOnClickListener(v -> orchestrator.dismissAfterFailure());
+
+        // Activity-scoped filter VM — Portfolio, Bonds, Breakdown, Chart all read it
+        // via the same ViewModelProvider(activity) call.
+        filterVm = new ViewModelProvider(this, GlobalFilterViewModel.factory(this))
+                .get(GlobalFilterViewModel.class);
+        new GlobalFilterBinder(binding.globalFilter, filterVm, this, this);
+
+        // Settings was demoted from the bottom nav (5-item cap). The gear icon in
+        // the filter bar's action row reaches it from any screen.
+        binding.globalFilter.globalSettingsButton.setOnClickListener(v -> {
+            try {
+                navController.navigate(R.id.settingsFragment);
+            } catch (IllegalArgumentException ignored) {
+                // No-op: graph not ready or already on Settings.
+            }
+        });
+
+        navController.addOnDestinationChangedListener(this::onDestinationChanged);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // After import/trade the held-currency set may have changed — re-derive so the
+        // chip row stays in sync with reality.
+        if (filterVm != null) filterVm.refreshAvailableCurrencies();
+    }
+
+    private void onDestinationChanged(
+            @NonNull NavController controller,
+            @NonNull NavDestination destination,
+            @androidx.annotation.Nullable Bundle args) {
+        // The action row (Settings gear) stays visible everywhere; only the chip
+        // rows hide on screens that don't react to the global filter.
+        boolean showChips = FILTER_DESTINATIONS.contains(destination.getId());
+        binding.globalFilter.globalFilterChipsContainer.setVisibility(
+                showChips ? View.VISIBLE : View.GONE);
     }
 
     private void renderStartupStatus(Status s) {
@@ -79,6 +147,14 @@ public class MainActivity extends AppCompatActivity {
         if (s.stage == Stage.DONE) {
             binding.startupOverlay.setVisibility(View.GONE);
             binding.bottomNav.setVisibility(View.VISIBLE);
+            // Action row (gear) is always visible; chip container follows the same
+            // FILTER_DESTINATIONS rule as onDestinationChanged.
+            binding.globalFilter.getRoot().setVisibility(View.VISIBLE);
+            NavDestination dest = navController.getCurrentDestination();
+            boolean chipsShouldShow = dest != null
+                    && FILTER_DESTINATIONS.contains(dest.getId());
+            binding.globalFilter.globalFilterChipsContainer.setVisibility(
+                    chipsShouldShow ? View.VISIBLE : View.GONE);
             // After a successful import, jump to Portfolio so the user sees the freshly
             // restored data instead of the Settings screen they triggered Import from.
             // consumeImportJustFinished() is one-shot so rotation doesn't re-navigate.
@@ -97,10 +173,11 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // Hide the bottom nav explicitly: BottomNavigationView's default elevation lets
-        // it bleed through the overlay's z-order, so the overlay alone isn't enough.
+        // Hide the bottom nav and filter bar explicitly: their default elevation lets
+        // them bleed through the overlay's z-order, so the overlay alone isn't enough.
         binding.startupOverlay.setVisibility(View.VISIBLE);
         binding.bottomNav.setVisibility(View.GONE);
+        binding.globalFilter.getRoot().setVisibility(View.GONE);
 
         boolean failed = (s.stage == Stage.FAILED);
         binding.startupProgress.setVisibility(failed ? View.GONE : View.VISIBLE);

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Single calendar day cell. Square aspect (height matches grid row height); the day
+    number sits centered. Below the number, a tiny dot signals "this date has a bond
+    payment" — colored with colorPrimary, hidden by default. The cell's background is
+    a circle drawable that's tinted/un-tinted by the day binder based on selected /
+    today / regular state, mirroring MaterialDatePicker's day cell styling.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="44dp"
+    android:padding="2dp">
+
+    <FrameLayout
+        android:id="@+id/dayBackground"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="center"
+        android:background="@drawable/calendar_day_bg">
+
+        <TextView
+            android:id="@+id/dayText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            tools:text="15" />
+
+        <View
+            android:id="@+id/dayMarker"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="2dp"
+            android:background="@drawable/calendar_day_marker"
+            android:visibility="gone"
+            tools:visibility="visible" />
+    </FrameLayout>
+</FrameLayout>

@@ -177,9 +177,31 @@ public final class SyncEngine {
             if (id != null) maturedIds.add(id);
         }
 
+        // Quick pre-pass: a bond's last DIVIDEND was already recorded today → the
+        // per-coupon ingest path would find no new rows to write, so skip the NBU
+        // lookup + DB walk entirely. Today-threshold (vs. yesterday-threshold) means
+        // we re-walk on each new calendar day, which sacrifices a tiny optimisation
+        // window in exchange for not relying on any assumption about NBU schedule
+        // spacing — in particular, this stays correct if a bond ever has payments on
+        // two consecutive calendar days (rare, but standard UAH OVDPs sometimes pair
+        // a final coupon with a same-day principal, and a yesterday-threshold could
+        // miss the maturity row if today's launch follows yesterday's coupon ingest).
+        Set<Long> upToDateIds = new HashSet<>();
+        for (AssetEntity b : bonds) {
+            if (b.isin == null || b.isin.isBlank()) continue;
+            if (maturedIds.contains(b.id)) continue;
+            LocalDateTime latest = sl.database().eventDao().findLatestDividendTimestamp(b.id);
+            if (latest != null && !latest.toLocalDate().isBefore(today)) {
+                upToDateIds.add(b.id);
+            }
+        }
+
         int total = 0;
         for (AssetEntity b : bonds) {
-            if (b.isin != null && !b.isin.isBlank() && !maturedIds.contains(b.id)) total++;
+            if (b.isin == null || b.isin.isBlank()) continue;
+            if (maturedIds.contains(b.id)) continue;
+            if (upToDateIds.contains(b.id)) continue;
+            total++;
         }
 
         int idx = 0;
@@ -187,6 +209,10 @@ public final class SyncEngine {
         for (AssetEntity bond : bonds) {
             if (bond.isin == null || bond.isin.isBlank()) continue;
             if (maturedIds.contains(bond.id)) continue;  // matured — expected absence
+            if (upToDateIds.contains(bond.id)) {
+                Log.i(TAG, "NBU skip " + bond.ticker + " — last coupon already at/after yesterday");
+                continue;
+            }
             idx++;
             cb.onProgress(Stage.BOND_COUPONS, idx, total, bond.ticker);
 

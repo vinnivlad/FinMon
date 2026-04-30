@@ -85,6 +85,9 @@ dependencies {
     // Charts
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
 
+    // Calendar (Bonds → Calendar tab)
+    implementation("com.kizitonwose.calendar:view:2.5.4")
+
     // Tests
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

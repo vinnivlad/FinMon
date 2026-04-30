@@ -13,26 +13,38 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.navigation.fragment.NavHostFragment;
+import androidx.recyclerview.widget.DividerItemDecoration;
+import androidx.recyclerview.widget.LinearLayoutManager;
 
-import com.google.android.material.tabs.TabLayout;
-import com.google.android.material.tabs.TabLayoutMediator;
 import com.my.finmon.R;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
+import com.my.finmon.data.repository.PortfolioRepository.WindowedHolding;
 import com.my.finmon.databinding.FragmentPortfolioBinding;
+import com.my.finmon.ui.filter.GlobalFilterViewModel;
+import com.my.finmon.ui.portfolio.PortfolioViewModel.PeriodTotals;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 /**
- * Hosts the Portfolio screen's two-tab layout: Holdings (page 0) + Analytics (page 1).
- * The totals card and FAB stay here as siblings of the ViewPager2; the pages
- * themselves are slim observers of this fragment's {@link PortfolioViewModel}.
+ * Portfolio screen — totals card on top, holdings list below, FAB for actions.
+ * Allocation pies and the per-currency breakdown that used to live as inner tabs
+ * here have moved to the Charts screen + Breakdown tab respectively, so this
+ * screen is single-purpose now: "what do I currently hold?".
+ *
+ * <p>The totals card consumes the global filter — headline value/invested and
+ * Period P&amp;L come from {@link PortfolioViewModel#periodTotals} (snapshot-based,
+ * agrees with Charts → Value totals card for the same filter). The cross-currency
+ * ribbon below the headline only shows in "All" currency mode.
  */
 public class PortfolioFragment extends Fragment {
 
@@ -44,7 +56,7 @@ public class PortfolioFragment extends Fragment {
 
     private FragmentPortfolioBinding binding;
     private PortfolioViewModel viewModel;
-    private TabLayoutMediator tabMediator;
+    private HoldingsAdapter holdingsAdapter;
 
     @Nullable
     @Override
@@ -59,87 +71,92 @@ public class PortfolioFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
+        GlobalFilterViewModel globalFilter = new ViewModelProvider(
+                requireActivity(), GlobalFilterViewModel.factory(requireContext()))
+                .get(GlobalFilterViewModel.class);
         viewModel = new ViewModelProvider(
-                this,
-                PortfolioViewModel.factory(requireContext())
-        ).get(PortfolioViewModel.class);
+                this, PortfolioViewModel.factory(requireContext(), globalFilter))
+                .get(PortfolioViewModel.class);
 
-        binding.portfolioPager.setAdapter(new PortfolioPagerAdapter(this));
-        tabMediator = new TabLayoutMediator(
-                binding.portfolioTabs, binding.portfolioPager,
-                (TabLayout.Tab tab, int position) -> {
-                    int titleRes = (position == PortfolioPagerAdapter.PAGE_ANALYTICS)
-                            ? R.string.portfolio_tab_analytics
-                            : R.string.portfolio_tab_holdings;
-                    tab.setText(titleRes);
-                });
-        tabMediator.attach();
+        holdingsAdapter = new HoldingsAdapter();
+        binding.holdingsList.setLayoutManager(new LinearLayoutManager(requireContext()));
+        binding.holdingsList.setAdapter(holdingsAdapter);
+        binding.holdingsList.addItemDecoration(
+                new DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL));
 
-        viewModel.totals().observe(getViewLifecycleOwner(),
-                t -> bindTotals(t, viewModel.displayCurrency().getValue()));
-        viewModel.displayCurrency().observe(getViewLifecycleOwner(),
-                c -> bindTotals(viewModel.totals().getValue(), c));
-
-        binding.totalsCard.setOnClickListener(v ->
-                NavHostFragment.findNavController(this)
-                        .navigate(R.id.action_portfolio_to_breakdown));
+        viewModel.windowedHoldings().observe(getViewLifecycleOwner(), this::renderHoldings);
+        // Totals card: periodTotals drives headline + Period P&L; lifetime totals
+        // feed the cross-currency ribbon; filter currency decides whether ribbon shows.
+        viewModel.periodTotals().observe(getViewLifecycleOwner(), pt -> rebindTotalsCard());
+        viewModel.totals().observe(getViewLifecycleOwner(), t -> rebindTotalsCard());
+        viewModel.filterCurrency().observe(getViewLifecycleOwner(), c -> rebindTotalsCard());
 
         binding.fab.setOnClickListener(this::showFabMenu);
     }
 
-    private void bindTotals(@Nullable PortfolioTotals t, @Nullable Currency displayCurrency) {
-        if (t == null) return;
+    private void renderHoldings(@Nullable List<WindowedHolding> active) {
+        if (binding == null) return;
+        if (active == null) active = Collections.emptyList();
+        List<HoldingsAdapter.Item> items = new ArrayList<>(active.size());
+        for (WindowedHolding wh : active) items.add(new HoldingsAdapter.Item.Active(wh));
+        holdingsAdapter.submitList(items);
+        binding.emptyState.setVisibility(active.isEmpty() ? View.VISIBLE : View.GONE);
+    }
 
-        Currency primary = displayCurrency != null ? displayCurrency : t.baseCurrency;
-        BigDecimal primaryValue = t.valueByDisplayCurrency.get(primary);
-        BigDecimal primaryInvested = t.investedByDisplayCurrency.get(primary);
-        BigDecimal primaryPnl = t.pnlByDisplayCurrency.get(primary);
-        if (primaryValue == null || primaryInvested == null || primaryPnl == null) {
-            primary = t.baseCurrency;
-            primaryValue = t.valueInBase;
-            primaryInvested = t.investedInBase;
-            primaryPnl = t.pnlInBase;
-        }
+    private void rebindTotalsCard() {
+        if (binding == null) return;
+        PeriodTotals pt = viewModel.periodTotals().getValue();
+        PortfolioTotals lifetime = viewModel.totals().getValue();
+        Currency filterCurrency = viewModel.filterCurrency().getValue();
+        if (pt == null) return;
 
-        binding.totalAmount.setText(MONEY.format(primaryValue) + " " + primary.name());
+        Currency primary = pt.currency;
+        binding.totalAmount.setText(MONEY.format(pt.valueEnd) + " " + primary.name());
 
-        StringBuilder others = new StringBuilder();
-        for (Map.Entry<Currency, BigDecimal> e : t.valueByDisplayCurrency.entrySet()) {
-            if (e.getKey() == primary) continue;
-            if (others.length() > 0) others.append(" · ");
-            others.append(MONEY.format(e.getValue())).append(' ').append(e.getKey().name());
-        }
-        if (others.length() > 0) {
-            binding.totalDisplayEquivalents.setText("≈ " + others);
-            binding.totalDisplayEquivalents.setVisibility(View.VISIBLE);
+        // Cross-currency ribbon only makes sense in All mode (filterCurrency == null);
+        // in specific mode we're already drilled into one bucket, so other currencies
+        // would just be noise.
+        if (filterCurrency == null && lifetime != null) {
+            StringBuilder others = new StringBuilder();
+            for (Map.Entry<Currency, BigDecimal> e : lifetime.valueByDisplayCurrency.entrySet()) {
+                if (e.getKey() == primary) continue;
+                if (others.length() > 0) others.append(" · ");
+                others.append(MONEY.format(e.getValue())).append(' ').append(e.getKey().name());
+            }
+            if (others.length() > 0) {
+                binding.totalDisplayEquivalents.setText("≈ " + others);
+                binding.totalDisplayEquivalents.setVisibility(View.VISIBLE);
+            } else {
+                binding.totalDisplayEquivalents.setVisibility(View.GONE);
+            }
         } else {
             binding.totalDisplayEquivalents.setVisibility(View.GONE);
         }
 
         binding.totalInvested.setText(getString(
                 R.string.totals_invested_label,
-                MONEY.format(primaryInvested) + " " + primary.name()));
+                MONEY.format(pt.investedEnd) + " " + primary.name()));
 
-        if (primaryInvested.signum() != 0) {
-            BigDecimal pct = primaryPnl.divide(primaryInvested.abs(), PCT_MC).multiply(HUNDRED);
-            binding.totalPnl.setText(
-                    SIGNED_MONEY.format(primaryPnl) + " " + primary.name()
-                            + " (" + PCT.format(pct) + ")");
-        } else {
-            binding.totalPnl.setText(SIGNED_MONEY.format(primaryPnl) + " " + primary.name());
+        StringBuilder pnlText = new StringBuilder();
+        pnlText.append(getString(R.string.chart_period_pnl_label))
+                .append(": ")
+                .append(SIGNED_MONEY.format(pt.periodPnl))
+                .append(' ')
+                .append(primary.name());
+        if (pt.periodPnlPct != null) {
+            pnlText.append(" (").append(PCT.format(pt.periodPnlPct)).append(')');
         }
-        int color = primaryPnl.signum() > 0
+        binding.totalPnl.setText(pnlText.toString());
+        int color = pt.periodPnl.signum() > 0
                 ? R.color.pnl_positive
-                : (primaryPnl.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
+                : (pt.periodPnl.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
         binding.totalPnl.setTextColor(ContextCompat.getColor(requireContext(), color));
 
-        binding.fxGapHint.setVisibility(t.hasFxGaps ? View.VISIBLE : View.GONE);
+        boolean showFxHint = filterCurrency == null && lifetime != null && lifetime.hasFxGaps;
+        binding.fxGapHint.setVisibility(showFxHint ? View.VISIBLE : View.GONE);
     }
 
     private void showFabMenu(@NonNull View anchor) {
-        // PopupMenu auto-picks placement and prefers below the anchor; using ListPopupWindow
-        // so we can pin the menu above the FAB (negative vertical offset = anchor height +
-        // measured menu height, so the menu's bottom sits just above the FAB's top).
         String[] labels = { getString(R.string.menu_record_trade) };
 
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
@@ -150,8 +167,6 @@ public class PortfolioFragment extends Fragment {
         popup.setAdapter(adapter);
         popup.setModal(true);
 
-        // Measure one row to compute the upward offset. WRAP_CONTENT for height keeps the
-        // popup tight to its content; the offset just needs to clear the FAB.
         View row = adapter.getView(0, null, (ViewGroup) anchor.getParent());
         row.measure(
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
@@ -180,10 +195,6 @@ public class PortfolioFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
-        if (tabMediator != null) {
-            tabMediator.detach();
-            tabMediator = null;
-        }
         super.onDestroyView();
         binding = null;
     }

@@ -129,7 +129,8 @@ public final class ServiceLocator {
                 database.exchangeRateDao(),
                 database.portfolioValueDao(),
                 ioExecutor,
-                userPreferences);
+                userPreferences,
+                nbuClient);
 
         this.marketDataRepository = new MarketDataRepository(
                 yahooClient,

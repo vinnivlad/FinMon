@@ -1,18 +1,17 @@
-package com.my.finmon.ui.breakdown;
+package com.my.finmon.ui.filter;
 
 import androidx.annotation.NonNull;
 
 import java.time.LocalDate;
 
 /**
- * Period filter for the currency-breakdown screen. Each value maps to a window
- * {@code [start, today]} used by {@code PortfolioRepository.getTradeRows}.
- *
- * <p>{@link #CUSTOM} is special — its window comes from a user-picked
- * {@code from..to} range stored alongside the period in
- * {@link CurrencyBreakdownViewModel}, so {@link #windowStart} throws for it.
+ * Period axis of the global filter shared across Portfolio, Breakdown, Chart, and
+ * (later) Bonds. {@link #CUSTOM} is special — its window is a user-picked
+ * {@code from..to} range stored in {@link GlobalFilterViewModel} alongside the
+ * selected period rather than derived from {@link #windowStart(LocalDate)}.
  */
-public enum Period {
+public enum FilterPeriod {
+    FIVE_DAYS,
     ONE_MONTH,
     SIX_MONTHS,
     YTD,
@@ -21,10 +20,11 @@ public enum Period {
     ALL_TIME,
     CUSTOM;
 
-    /** Window start for this period relative to {@code today}. */
+    /** Window start relative to {@code today} for non-custom periods. */
     @NonNull
     public LocalDate windowStart(@NonNull LocalDate today) {
         switch (this) {
+            case FIVE_DAYS: return today.minusDays(5);
             case ONE_MONTH: return today.minusMonths(1);
             case SIX_MONTHS: return today.minusMonths(6);
             case YTD: return today.withDayOfYear(1);
@@ -34,7 +34,7 @@ public enum Period {
             case CUSTOM:
             default:
                 throw new IllegalStateException(
-                        "CUSTOM period has user-picked range — read it from the ViewModel");
+                        "CUSTOM period has user-picked range — read it from GlobalFilterViewModel");
         }
     }
 }

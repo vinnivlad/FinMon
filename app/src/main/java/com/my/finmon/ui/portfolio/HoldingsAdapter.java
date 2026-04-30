@@ -17,6 +17,7 @@ import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.repository.PortfolioRepository.Holding;
 import com.my.finmon.data.repository.PortfolioRepository.MaturedBond;
+import com.my.finmon.data.repository.PortfolioRepository.WindowedHolding;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -29,7 +30,9 @@ import java.util.Objects;
 /**
  * Three-row-type adapter:
  * <ul>
- *   <li>{@link Item.Active} — a regular open holding (existing layout).</li>
+ *   <li>{@link Item.Active} — a regular open holding wrapped in a
+ *       {@link WindowedHolding} so the row can show window-scoped P&amp;L from the
+ *       global filter.</li>
  *   <li>{@link Item.MaturedHeader} — collapsible section header with chevron + count.
  *       Clicking it fires {@code onToggle} so the fragment can flip the expanded flag
  *       and re-submit the list.</li>
@@ -52,6 +55,7 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
     private static final MathContext PCT_MC = new MathContext(4, RoundingMode.HALF_UP);
 
     @Nullable private Runnable onToggleMatured;
+    @Nullable private java.util.function.Consumer<WindowedHolding> onActiveClick;
 
     public HoldingsAdapter() {
         super(DIFF);
@@ -59,6 +63,12 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
 
     public void setOnToggleMaturedListener(@Nullable Runnable listener) {
         this.onToggleMatured = listener;
+    }
+
+    /** Optional — when set, ActiveRow rows fire on tap with their {@link WindowedHolding}. */
+    public void setOnActiveClickListener(
+            @Nullable java.util.function.Consumer<WindowedHolding> listener) {
+        this.onActiveClick = listener;
     }
 
     @Override
@@ -89,7 +99,15 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
         Item it = getItem(position);
         if (holder instanceof ActiveRow && it instanceof Item.Active) {
-            ((ActiveRow) holder).bind(((Item.Active) it).holding);
+            WindowedHolding wh = ((Item.Active) it).windowed;
+            ActiveRow row = (ActiveRow) holder;
+            row.bind(wh);
+            if (onActiveClick != null) {
+                row.itemView.setOnClickListener(v -> onActiveClick.accept(wh));
+            } else {
+                row.itemView.setOnClickListener(null);
+                row.itemView.setClickable(false);
+            }
         } else if (holder instanceof HeaderRow && it instanceof Item.MaturedHeader) {
             ((HeaderRow) holder).bind((Item.MaturedHeader) it);
         } else if (holder instanceof MaturedRow && it instanceof Item.Matured) {
@@ -104,9 +122,9 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
         abstract Object diffKey();
 
         public static final class Active extends Item {
-            @NonNull final Holding holding;
-            public Active(@NonNull Holding h) { this.holding = h; }
-            @Override Object diffKey() { return "A:" + holding.asset.id; }
+            @NonNull final WindowedHolding windowed;
+            public Active(@NonNull WindowedHolding wh) { this.windowed = wh; }
+            @Override Object diffKey() { return "A:" + windowed.holding.asset.id; }
         }
 
         public static final class MaturedHeader extends Item {
@@ -146,7 +164,8 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
             breakdownLine = v.findViewById(R.id.breakdownLine);
         }
 
-        void bind(@NonNull Holding h) {
+        void bind(@NonNull WindowedHolding wh) {
+            Holding h = wh.holding;
             AssetEntity a = h.asset;
             ticker.setText(a.ticker);
             typeCurrency.setText(a.type.name() + " · " + a.currency.name());
@@ -173,33 +192,26 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
                 subValue.setVisibility(View.GONE);
             }
 
-            // Lifetime P&L: unrealized (mv - cost) + realized + dividends. Color the
-            // headline by the lifetime number — so a bond with deep premium-paid
-            // unrealized but ample coupons received reads green to match its currency
-            // page's per-lot trade-row totals.
-            if (h.marketValue != null && h.openCostBasis != null
-                    && h.openCostBasis.signum() != 0) {
-                BigDecimal unrealized = h.marketValue.subtract(h.openCostBasis);
-                BigDecimal realized = h.lifetimeRealizedPnl != null
-                        ? h.lifetimeRealizedPnl : BigDecimal.ZERO;
-                BigDecimal dividends = h.lifetimeDividends != null
-                        ? h.lifetimeDividends : BigDecimal.ZERO;
-                BigDecimal lifetime = unrealized.add(realized).add(dividends);
-                BigDecimal pct = lifetime.divide(h.openCostBasis, PCT_MC).multiply(new BigDecimal("100"));
-                pnl.setText(SIGNED_MONEY.format(lifetime) + " (" + PCT.format(pct) + ")");
-                pnl.setTextColor(ContextCompat.getColor(itemView.getContext(), pnlColor(lifetime)));
-                pnl.setVisibility(View.VISIBLE);
-
-                breakdownLine.setText(itemView.getContext().getString(
-                        R.string.trade_row_breakdown,
-                        signed(realized),
-                        signed(unrealized),
-                        signed(dividends)));
-                breakdownLine.setVisibility(View.VISIBLE);
+            // Window-scoped P&L from the aggregated TradeRows. % base is the open
+            // cost basis for non-zero positions; matches what each lot's TradeRow
+            // would compute when summed up.
+            BigDecimal totalPnl = wh.windowTotalPnl;
+            BigDecimal pctBase = h.openCostBasis;
+            if (pctBase != null && pctBase.signum() != 0) {
+                BigDecimal pct = totalPnl.divide(pctBase, PCT_MC).multiply(new BigDecimal("100"));
+                pnl.setText(SIGNED_MONEY.format(totalPnl) + " (" + PCT.format(pct) + ")");
             } else {
-                pnl.setVisibility(View.GONE);
-                breakdownLine.setVisibility(View.GONE);
+                pnl.setText(SIGNED_MONEY.format(totalPnl));
             }
+            pnl.setTextColor(ContextCompat.getColor(itemView.getContext(), pnlColor(totalPnl)));
+            pnl.setVisibility(View.VISIBLE);
+
+            breakdownLine.setText(itemView.getContext().getString(
+                    R.string.trade_row_breakdown,
+                    signed(wh.windowRealizedPnl),
+                    signed(wh.windowUnrealizedPnl),
+                    signed(wh.windowDividends)));
+            breakdownLine.setVisibility(View.VISIBLE);
         }
 
         private static String signed(@NonNull BigDecimal v) {
@@ -281,13 +293,17 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
         @Override
         public boolean areContentsTheSame(@NonNull Item a, @NonNull Item b) {
             if (a instanceof Item.Active && b instanceof Item.Active) {
-                Holding ha = ((Item.Active) a).holding;
-                Holding hb = ((Item.Active) b).holding;
+                WindowedHolding wa = ((Item.Active) a).windowed;
+                WindowedHolding wb = ((Item.Active) b).windowed;
+                Holding ha = wa.holding;
+                Holding hb = wb.holding;
                 return sameBD(ha.quantity, hb.quantity)
                         && sameBD(ha.openCostBasis, hb.openCostBasis)
                         && sameBD(ha.marketValue, hb.marketValue)
-                        && sameBD(ha.lifetimeDividends, hb.lifetimeDividends)
-                        && sameBD(ha.lifetimeRealizedPnl, hb.lifetimeRealizedPnl)
+                        && sameBD(wa.windowTotalPnl, wb.windowTotalPnl)
+                        && sameBD(wa.windowDividends, wb.windowDividends)
+                        && sameBD(wa.windowRealizedPnl, wb.windowRealizedPnl)
+                        && sameBD(wa.windowUnrealizedPnl, wb.windowUnrealizedPnl)
                         && Objects.equals(ha.asset.ticker, hb.asset.ticker)
                         && ha.asset.type == hb.asset.type
                         && ha.asset.currency == hb.asset.currency;

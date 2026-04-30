@@ -25,6 +25,11 @@ final class CurrencyPagerAdapter extends FragmentStateAdapter {
         notifyDataSetChanged();
     }
 
+    @NonNull
+    List<Currency> currencies() {
+        return currencies;
+    }
+
     @Override
     public int getItemCount() {
         return currencies.size();

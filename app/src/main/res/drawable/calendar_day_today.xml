@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Today" indicator — outlined oval matching MaterialDatePicker's today style. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <stroke
+        android:width="1.5dp"
+        android:color="?attr/colorPrimary" />
+    <solid android:color="@android:color/transparent" />
+</shape>

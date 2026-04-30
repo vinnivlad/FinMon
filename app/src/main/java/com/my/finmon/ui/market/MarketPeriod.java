@@ -8,7 +8,7 @@ import androidx.annotation.NonNull;
  *
  * <p>{@link #ONE_DAY} adds intraday granularity (5-minute bars) so today's price action
  * is meaningful in the chart — that's the use case the Market tab is mostly for, and
- * it's why this enum exists separately from {@link com.my.finmon.ui.chart.ChartPeriod}.
+ * it's why this enum exists separately from {@link com.my.finmon.ui.filter.FilterPeriod}.
  *
  * <p>{@link #CUSTOM} pairs with a user-picked {@code from..to} stored on the ViewModel.
  */

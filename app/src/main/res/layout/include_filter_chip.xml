@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Single Material3 filter chip used as an inflation template by GlobalFilterBinder
+    when it builds the dynamic currency chip row. Inflated with attachToRoot=false so
+    callers can populate text/id/tag and add to whichever ChipGroup needs it.
+-->
+<com.google.android.material.chip.Chip
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/Widget.Material3.Chip.Filter"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content" />

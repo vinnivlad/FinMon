@@ -55,6 +55,41 @@
 
     <!-- Currency breakdown screen -->
     <string name="breakdown_title">By currency</string>
+
+    <!-- Charts screen tabs -->
+    <string name="charts_title">Charts</string>
+    <string name="charts_tab_value">Value</string>
+    <string name="charts_tab_growth">Growth</string>
+    <string name="charts_tab_allocation">Allocation</string>
+    <string name="charts_growth_placeholder">Coming soon</string>
+    <string name="charts_growth_label">Period growth</string>
+    <string name="charts_growth_empty">Not enough data to plot growth.</string>
+
+    <!-- Bonds screen -->
+    <string name="bonds_title">Bonds</string>
+    <string name="bonds_tab_holdings">Holdings</string>
+    <string name="bonds_tab_calendar">Calendar</string>
+    <string name="bonds_expected_payments_label">Expected payments</string>
+    <string name="bonds_expected_payments_placeholder">Coming soon</string>
+    <string name="bonds_expected_payments_none">No upcoming bond payments.</string>
+    <string name="bonds_expected_payments_fx_gap">(some FX missing)</string>
+    <string name="bonds_expected_type_coupons">Coupons: %1$s</string>
+    <string name="bonds_expected_type_maturity">Maturity: %1$s</string>
+    <string name="bonds_calendar_placeholder">Coming soon</string>
+    <string name="bonds_holdings_empty">No bonds in portfolio.</string>
+    <string name="bond_detail_yield">Yield: %1$s%%</string>
+    <string name="bond_detail_yield_unknown">Yield: —</string>
+    <string name="bond_detail_maturity">Maturity: %1$s</string>
+    <string name="bond_detail_maturity_unknown">Maturity: —</string>
+    <string name="bond_detail_schedule_label">Coupon schedule</string>
+    <string name="bond_detail_schedule_empty">No coupon schedule available.</string>
+    <string name="bond_detail_type_coupon">Coupon</string>
+    <string name="bond_detail_type_maturity">Principal</string>
+    <string name="bond_detail_close">Close</string>
+    <string name="bond_detail_paid_sum">Already received: %1$s</string>
+    <string name="bond_detail_expected_sum">Expected: %1$s</string>
+    <string name="date_payments_dialog_total">Total: %1$s</string>
+    <string name="date_payments_dialog_total_multi">≈ %1$s %2$s</string>
     <string name="breakdown_subtitle">Native-currency view — no FX conversion.</string>
     <string name="breakdown_empty">No positions yet.</string>
     <string name="breakdown_page_empty">No trades in this currency for the selected period.</string>
@@ -71,7 +106,6 @@
     <string name="trade_row_breakdown">Realized %1$s · Unrealized %2$s · Dividends %3$s</string>
 
     <!-- Chart screen -->
-    <string name="chart_title">Chart</string>
     <string name="chart_subtitle">Value vs. invested, in %1$s. Gap = market P&amp;L.</string>
     <string name="chart_empty">No history yet — snapshots build up as the sync worker runs.</string>
     <string name="chart_line_value">Value</string>
@@ -117,8 +151,6 @@
     <string name="market_action_refresh">Refresh</string>
 
     <!-- Portfolio screen tabs -->
-    <string name="portfolio_tab_holdings">Holdings</string>
-    <string name="portfolio_tab_analytics">Analytics</string>
 
     <!-- Analytics tab -->
     <string name="analytics_filter_by_type">By Type</string>

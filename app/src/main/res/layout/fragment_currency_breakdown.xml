@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Breakdown body. Period filter rows used to live here; they were lifted into the
+  Activity-scoped global filter (view_global_filter.xml in activity_main.xml). The
+  global currency filter additionally drives which tab is selected — a non-"All"
+  pick auto-jumps to the matching currency.
+-->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -6,86 +12,12 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <HorizontalScrollView
-        android:id="@+id/periodChipsScroll"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingHorizontal="16dp"
-        android:paddingTop="12dp"
-        android:paddingBottom="4dp"
-        android:scrollbars="none"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <com.google.android.material.chip.ChipGroup
-            android:id="@+id/periodChips"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            app:chipSpacingHorizontal="8dp"
-            app:singleLine="true"
-            app:singleSelection="true"
-            app:selectionRequired="true">
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chip1m"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/period_1m" />
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chip6m"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/chart_period_6m" />
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chipYtd"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/period_ytd" />
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chip1y"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/period_1y" />
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chip5y"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/chart_period_5y" />
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chipAll"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:checked="true"
-                android:text="@string/period_all" />
-
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chipCustom"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/chart_period_custom" />
-
-        </com.google.android.material.chip.ChipGroup>
-    </HorizontalScrollView>
-
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/currencyTabs"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:tabMode="fixed"
-        app:layout_constraintTop_toBottomOf="@id/periodChipsScroll"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 

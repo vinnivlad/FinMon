@@ -5,15 +5,19 @@
         android:title="@string/portfolio_title"
         android:icon="@android:drawable/ic_menu_sort_by_size" />
     <item
-        android:id="@+id/chartFragment"
-        android:title="@string/chart_title"
+        android:id="@+id/bondsFragment"
+        android:title="@string/bonds_title"
+        android:icon="@drawable/ic_bond" />
+    <item
+        android:id="@+id/currencyBreakdownFragment"
+        android:title="@string/breakdown_title"
+        android:icon="@android:drawable/ic_menu_agenda" />
+    <item
+        android:id="@+id/chartsFragment"
+        android:title="@string/charts_title"
         android:icon="@android:drawable/ic_menu_recent_history" />
     <item
         android:id="@+id/marketFragment"
         android:title="@string/market_title"
         android:icon="@drawable/ic_market" />
-    <item
-        android:id="@+id/settingsFragment"
-        android:title="@string/settings_title"
-        android:icon="@drawable/ic_settings" />
 </menu>
