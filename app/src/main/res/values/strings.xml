@@ -169,7 +169,7 @@
     <string name="settings_section_data">Data</string>
     <string name="settings_manual_entry_help">Backup paths for data the auto-ingest pipeline can\'t reach — off-NBU bonds, special distributions, very old history.</string>
     <string name="settings_action_add_asset">Add asset</string>
-    <string name="settings_action_manual_event">Record dividend or coupon</string>
+    <string name="settings_action_manual_event">Record dividend, coupon or split</string>
 
     <!-- Tax settings -->
     <string name="settings_section_taxes">Taxes</string>
@@ -188,7 +188,7 @@
     <string name="tax_overrides_field_hint">%</string>
 
     <!-- Manual event screen -->
-    <string name="manual_event_title">Record dividend, coupon, or redemption</string>
+    <string name="manual_event_title">Record manual event</string>
     <string name="manual_event_help">Use this when auto-ingest didn\'t reach an event — off-NBU bonds, special distributions, manual bond redemptions, or very old history.</string>
     <string name="manual_event_field_asset">Source asset</string>
     <string name="manual_event_field_amount">Cash amount received</string>
@@ -203,6 +203,12 @@
     <string name="manual_event_redemption_no_open">No open lots — bond is already closed or not yet bought.</string>
     <string name="manual_event_redemption_only_bonds">Bond redemption applies to bonds only.</string>
     <string name="manual_event_already_redeemed">This bond is already redeemed.</string>
+    <string name="manual_event_kind_split">Split</string>
+    <string name="manual_event_field_ratio">Ratio</string>
+    <string name="manual_event_ratio_help">2-for-1 forward split → enter 2. 1-for-2 reverse → enter 0.5.</string>
+    <string name="manual_event_split_only_stocks">Splits apply to stocks only.</string>
+    <string name="manual_event_ratio_positive">Ratio must be a positive number</string>
+    <string name="manual_event_split_already_recorded">A split for %1$s on %2$s is already recorded.</string>
 
     <!-- Matured bonds section -->
     <string name="matured_section_label">Matured bonds (%1$d)</string>

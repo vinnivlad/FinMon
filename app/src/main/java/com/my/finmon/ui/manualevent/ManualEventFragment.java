@@ -17,8 +17,8 @@ import com.google.android.material.snackbar.Snackbar;
 import com.my.finmon.R;
 import com.my.finmon.data.entity.AssetEntity;
 import com.my.finmon.data.model.AssetType;
+import com.my.finmon.data.model.EventType;
 import com.my.finmon.databinding.FragmentManualEventBinding;
-import com.my.finmon.ui.manualevent.ManualEventViewModel.Kind;
 import com.my.finmon.ui.manualevent.ManualEventViewModel.RedemptionPreview;
 
 import java.math.BigDecimal;
@@ -27,6 +27,8 @@ import java.text.DecimalFormatSymbols;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -45,6 +47,9 @@ import java.util.Locale;
 public final class ManualEventFragment extends Fragment {
 
     private static final DecimalFormat MONEY = buildFormat("#,##0.00");
+    /** Locale-aware short date for the pay-date field. */
+    private static final DateTimeFormatter DATE_FMT =
+            DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault());
 
     private FragmentManualEventBinding binding;
     private ManualEventViewModel vm;
@@ -52,7 +57,10 @@ public final class ManualEventFragment extends Fragment {
     @Nullable private List<AssetEntity> heldAssets;
     @Nullable private AssetEntity pickedAsset;
     @Nullable private LocalDate selectedDate;
-    @NonNull private Kind kind = Kind.INCOME;
+    /** Active form mode. The XML chip group is wired to exactly the three values
+     *  this fragment supports — DIVIDEND, MATURITY, SPLIT — and the save dispatch
+     *  switches on the same enum directly. */
+    @NonNull private EventType eventType = EventType.DIVIDEND;
 
     @Nullable
     @Override
@@ -91,19 +99,22 @@ public final class ManualEventFragment extends Fragment {
 
         vm.redemptionPreview().observe(getViewLifecycleOwner(), this::renderRedemptionPreview);
 
-        applyKindToUi();
+        applyEventTypeToUi();
     }
 
     private void setupKindChips() {
         binding.kindChips.setOnCheckedStateChangeListener((group, checkedIds) -> {
             if (checkedIds.isEmpty()) return;
             int id = checkedIds.get(0);
-            kind = (id == R.id.kindChipMaturity) ? Kind.MATURITY : Kind.INCOME;
-            applyKindToUi();
-            // Different kinds offer different asset subsets — bonds-only for redemption,
-            // stocks + bonds for income. Drop the picked asset if it's not in the new
-            // subset so the user can't submit a stale stock pick under maturity mode.
-            if (pickedAsset != null && !isAssetEligibleForKind(pickedAsset, kind)) {
+            if (id == R.id.kindChipMaturity) eventType = EventType.MATURITY;
+            else if (id == R.id.kindChipSplit) eventType = EventType.SPLIT;
+            else eventType = EventType.DIVIDEND;
+            applyEventTypeToUi();
+            // Different event types target different asset subsets — bonds-only for
+            // maturity, stocks-only for split, stocks+bonds for dividend/coupon. Drop
+            // the picked asset if it's no longer eligible so the user can't submit a
+            // stale pick.
+            if (pickedAsset != null && !isAssetEligibleFor(pickedAsset, eventType)) {
                 pickedAsset = null;
                 binding.asset.setText("", false);
             }
@@ -112,26 +123,39 @@ public final class ManualEventFragment extends Fragment {
         });
     }
 
-    private boolean isAssetEligibleForKind(@NonNull AssetEntity a, @NonNull Kind k) {
-        if (k == Kind.MATURITY) return a.type == AssetType.BOND;
-        return true;  // INCOME accepts both stocks and bonds
+    private boolean isAssetEligibleFor(@NonNull AssetEntity a, @NonNull EventType t) {
+        switch (t) {
+            case MATURITY: return a.type == AssetType.BOND;
+            case SPLIT:    return a.type == AssetType.STOCK;
+            case DIVIDEND:
+            default:       return true;  // stocks + bonds
+        }
     }
 
     /**
-     * Show/hide amount + preview based on the selected kind. Maturity mode hides the
-     * amount field entirely (face × qty is derived); income mode hides the preview.
+     * Show/hide the amount, ratio, and redemption-preview blocks based on the
+     * selected event type. Each type exposes a different input shape:
+     * <ul>
+     *   <li>DIVIDEND — amount field visible.</li>
+     *   <li>MATURITY — both fields hidden; preview line shows derived cash.</li>
+     *   <li>SPLIT — ratio field visible.</li>
+     * </ul>
      */
-    private void applyKindToUi() {
-        boolean redemption = (kind == Kind.MATURITY);
-        binding.amountLayout.setVisibility(redemption ? View.GONE : View.VISIBLE);
-        binding.amountHelp.setVisibility(redemption ? View.GONE : View.VISIBLE);
-        if (!redemption) {
+    private void applyEventTypeToUi() {
+        boolean dividend = (eventType == EventType.DIVIDEND);
+        boolean split = (eventType == EventType.SPLIT);
+        boolean maturity = (eventType == EventType.MATURITY);
+        binding.amountLayout.setVisibility(dividend ? View.VISIBLE : View.GONE);
+        binding.amountHelp.setVisibility(dividend ? View.VISIBLE : View.GONE);
+        binding.ratioLayout.setVisibility(split ? View.VISIBLE : View.GONE);
+        binding.ratioHelp.setVisibility(split ? View.VISIBLE : View.GONE);
+        if (!maturity) {
             binding.redemptionPreview.setVisibility(View.GONE);
         }
     }
 
     private void renderRedemptionPreview(@Nullable RedemptionPreview p) {
-        if (kind != Kind.MATURITY || p == null) {
+        if (eventType != EventType.MATURITY || p == null) {
             binding.redemptionPreview.setVisibility(View.GONE);
             return;
         }
@@ -155,7 +179,7 @@ public final class ManualEventFragment extends Fragment {
     }
 
     private void requestPreviewIfApplicable() {
-        if (kind == Kind.MATURITY) {
+        if (eventType == EventType.MATURITY) {
             LocalDate asOf = (selectedDate != null) ? selectedDate : LocalDate.now();
             vm.requestRedemptionPreview(pickedAsset, asOf);
         }
@@ -167,7 +191,7 @@ public final class ManualEventFragment extends Fragment {
     }
 
     /**
-     * Filter {@link #heldAssets} by the current {@link #kind} and rebuild the dropdown.
+     * Filter {@link #heldAssets} by the current {@link #eventType} and rebuild the dropdown.
      * Called on both initial asset load and chip change.
      */
     private void renderAssetDropdown() {
@@ -176,7 +200,7 @@ public final class ManualEventFragment extends Fragment {
 
         List<AssetEntity> visible = new java.util.ArrayList<>(source.size());
         for (AssetEntity a : source) {
-            if (isAssetEligibleForKind(a, kind)) visible.add(a);
+            if (isAssetEligibleFor(a, eventType)) visible.add(a);
         }
 
         boolean empty = visible.isEmpty();
@@ -208,7 +232,7 @@ public final class ManualEventFragment extends Fragment {
                     requireContext(),
                     (datePicker, year, month, dayOfMonth) -> {
                         selectedDate = LocalDate.of(year, month + 1, dayOfMonth);
-                        binding.payDate.setText(selectedDate.toString());
+                        binding.payDate.setText(DATE_FMT.format(selectedDate));
                         binding.payDateLayout.setError(null);
                         requestPreviewIfApplicable();
                     },
@@ -232,7 +256,7 @@ public final class ManualEventFragment extends Fragment {
             ok = false;
         }
 
-        if (kind == Kind.MATURITY) {
+        if (eventType == EventType.MATURITY) {
             if (pickedAsset != null && pickedAsset.type != AssetType.BOND) {
                 Snackbar.make(binding.getRoot(),
                         getString(R.string.manual_event_redemption_only_bonds),
@@ -244,7 +268,42 @@ public final class ManualEventFragment extends Fragment {
             return;
         }
 
-        // Income kind — amount field is required.
+        if (eventType == EventType.SPLIT) {
+            if (pickedAsset != null && pickedAsset.type != AssetType.STOCK) {
+                Snackbar.make(binding.getRoot(),
+                        getString(R.string.manual_event_split_only_stocks),
+                        Snackbar.LENGTH_LONG).show();
+                ok = false;
+            }
+            String ratioStr = textOf(binding.ratio);
+            if (ratioStr.isEmpty()) {
+                binding.ratioLayout.setError(getString(R.string.error_required));
+                ok = false;
+            }
+            if (!ok) return;
+
+            BigDecimal ratio;
+            try {
+                ratio = new BigDecimal(ratioStr);
+            } catch (NumberFormatException e) {
+                Snackbar.make(binding.getRoot(),
+                        getString(R.string.error_invalid_number),
+                        Snackbar.LENGTH_SHORT).show();
+                return;
+            }
+            if (ratio.signum() <= 0) {
+                binding.ratioLayout.setError(getString(R.string.manual_event_ratio_positive));
+                return;
+            }
+            // 09:00 — same offset coupons / dividends use, dodges the noon-trade-leg
+            // detection in computeTotalsSync.
+            LocalDateTime ts = LocalDateTime.of(selectedDate, LocalTime.of(9, 0));
+            vm.submitSplit(pickedAsset, ratio, ts);
+            return;
+        }
+
+        // DIVIDEND (income) — amount field is required. Falls through to here when
+        // eventType isn't MATURITY or SPLIT.
         String amountStr = textOf(binding.amount);
         if (amountStr.isEmpty()) {
             binding.amountLayout.setError(getString(R.string.error_required));
@@ -275,6 +334,7 @@ public final class ManualEventFragment extends Fragment {
     private void clearFieldErrors() {
         binding.assetLayout.setError(null);
         binding.amountLayout.setError(null);
+        binding.ratioLayout.setError(null);
         binding.payDateLayout.setError(null);
     }
 

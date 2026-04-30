@@ -42,6 +42,13 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/manual_event_kind_maturity" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/kindChipSplit"
+                style="@style/Widget.Material3.Chip.Filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/manual_event_kind_split" />
         </com.google.android.material.chip.ChipGroup>
 
         <com.google.android.material.textfield.TextInputLayout
@@ -91,6 +98,31 @@
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:alpha="0.7"
             android:layout_marginTop="2dp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/ratioLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:visibility="gone"
+            android:hint="@string/manual_event_field_ratio">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/ratio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="numberDecimal" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <TextView
+            android:id="@+id/ratioHelp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/manual_event_ratio_help"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:alpha="0.7"
+            android:layout_marginTop="2dp"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/redemptionPreview"

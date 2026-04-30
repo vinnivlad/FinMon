@@ -62,7 +62,9 @@ public class MarketFragment extends Fragment {
     private static final DateTimeFormatter HEADER_TS_FMT = DateTimeFormatter.ofPattern("MMM d, HH:mm:ss");
     private static final DateTimeFormatter X_TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter X_DATE_FMT = DateTimeFormatter.ofPattern("MMM d");
-    private static final DateTimeFormatter CHIP_DATE_FMT = DateTimeFormatter.ofPattern("MMM d, yyyy");
+    private static final DateTimeFormatter CHIP_DATE_FMT = DateTimeFormatter
+            .ofLocalizedDate(java.time.format.FormatStyle.MEDIUM)
+            .withLocale(Locale.getDefault());
 
     private FragmentMarketBinding binding;
     private MarketViewModel viewModel;

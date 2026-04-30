@@ -20,6 +20,8 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
+import java.util.Locale;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +38,8 @@ import java.util.Map;
  */
 public final class GlobalFilterBinder {
 
-    private static final DateTimeFormatter CHIP_FMT = DateTimeFormatter.ofPattern("MMM d, yyyy");
+    private static final DateTimeFormatter CHIP_FMT =
+            DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault());
     private static final String CHIP_TAG_ALL = "ALL";
     /** {@code -1} sentinel for the "All" chip — Currency enum can't carry a null tag. */
     private static final long CHIP_ID_BASE = 100_000L;

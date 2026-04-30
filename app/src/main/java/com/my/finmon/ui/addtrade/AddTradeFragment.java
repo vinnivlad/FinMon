@@ -27,13 +27,19 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class AddTradeFragment extends Fragment {
 
     /** Idle window before each keystroke triggers a Yahoo search. */
     private static final long SEARCH_DEBOUNCE_MS = 300L;
+    /** Locale-aware short date for the trade-date field. */
+    private static final DateTimeFormatter DATE_FMT =
+            DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault());
 
     private FragmentAddTradeBinding binding;
     private AddTradeViewModel vm;
@@ -141,7 +147,7 @@ public class AddTradeFragment extends Fragment {
                     requireContext(),
                     (datePicker, year, month, dayOfMonth) -> {
                         selectedDate = LocalDate.of(year, month + 1, dayOfMonth);
-                        binding.tradeDate.setText(selectedDate.toString());
+                        binding.tradeDate.setText(DATE_FMT.format(selectedDate));
                     },
                     seed.getYear(),
                     seed.getMonthValue() - 1,

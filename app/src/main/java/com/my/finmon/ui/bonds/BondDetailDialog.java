@@ -23,6 +23,8 @@ import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
 import java.util.Locale;
 
 /**
@@ -34,6 +36,10 @@ import java.util.Locale;
 final class BondDetailDialog {
 
     private static final DecimalFormat MONEY = buildFormat("#,##0.00");
+    /** Locale-aware short date — picks up the device's preferred order
+     *  (e.g. "07 Feb 2024" en-GB, "07.02.2024" de-DE). */
+    private static final DateTimeFormatter DATE_FMT =
+            DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault());
 
     private static DecimalFormat buildFormat(@NonNull String pattern) {
         DecimalFormatSymbols sym = DecimalFormatSymbols.getInstance(Locale.US);
@@ -71,7 +77,7 @@ final class BondDetailDialog {
                 ? host.getString(R.string.bond_detail_yield, formatPct(bond.bondYieldPct))
                 : host.getString(R.string.bond_detail_yield_unknown));
         binding.bondMaturity.setText(bond.bondMaturityDate != null
-                ? host.getString(R.string.bond_detail_maturity, bond.bondMaturityDate.toString())
+                ? host.getString(R.string.bond_detail_maturity, DATE_FMT.format(bond.bondMaturityDate))
                 : host.getString(R.string.bond_detail_maturity_unknown));
 
         // Paid (past entries) vs expected (future entries) sums in the bond's
@@ -118,7 +124,7 @@ final class BondDetailDialog {
             @NonNull String ccyLabel) {
         ItemBondCouponLineBinding row = ItemBondCouponLineBinding.inflate(
                 LayoutInflater.from(container.getContext()), container, false);
-        row.couponDate.setText(entry.date.toString());
+        row.couponDate.setText(DATE_FMT.format(entry.date));
         row.couponType.setText(host.getString(entry.type == EventType.MATURITY
                 ? R.string.bond_detail_type_maturity
                 : R.string.bond_detail_type_coupon));

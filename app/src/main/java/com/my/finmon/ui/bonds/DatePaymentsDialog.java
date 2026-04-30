@@ -34,8 +34,10 @@ import java.util.Map;
 final class DatePaymentsDialog {
 
     private static final DecimalFormat MONEY = buildFormat("#,##0.00");
+    /** Locale-aware long date with weekday (e.g. "Wednesday, 7 February 2024"). */
     private static final DateTimeFormatter TITLE_FMT =
-            DateTimeFormatter.ofPattern("EEEE, MMM d, yyyy", Locale.getDefault());
+            DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.FULL)
+                    .withLocale(Locale.getDefault());
 
     private static DecimalFormat buildFormat(@NonNull String pattern) {
         DecimalFormatSymbols sym = DecimalFormatSymbols.getInstance(Locale.US);

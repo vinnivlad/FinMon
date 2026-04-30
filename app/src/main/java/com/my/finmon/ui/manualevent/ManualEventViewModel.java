@@ -16,6 +16,9 @@ import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.PortfolioRepository;
 import com.my.finmon.data.repository.PortfolioRepository.FifoResult;
+import com.my.finmon.data.repository.PortfolioRepository.SplitIngest;
+
+import java.util.Collections;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -40,9 +43,6 @@ import java.util.concurrent.ExecutorService;
 public final class ManualEventViewModel extends ViewModel {
 
     private static final String TAG = "ManualEventVM";
-
-    /** Form mode driven by the chip group. */
-    public enum Kind { INCOME, MATURITY }
 
     public static final class RedemptionPreview {
         @NonNull public final BigDecimal qty;
@@ -145,6 +145,42 @@ public final class ManualEventViewModel extends ViewModel {
                 saved.postValue(true);
             } catch (Exception e) {
                 Log.w(TAG, "save failed", e);
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                error.postValue(cause.getMessage() != null ? cause.getMessage() : cause.toString());
+            }
+        });
+    }
+
+    /**
+     * Submit a stock split. Forward 2-for-1 = ratio 2; reverse 1-for-2 = ratio 0.5.
+     * Routes through {@link PortfolioRepository#ingestStockEvents} so dedup against
+     * an existing same-day SPLIT row is automatic. Returns false to {@link #saved}
+     * if the split was a no-op (already recorded or asset isn't a stock).
+     */
+    public void submitSplit(
+            @NonNull AssetEntity asset,
+            @NonNull BigDecimal ratio,
+            @NonNull LocalDateTime timestamp) {
+        viewExecutor.execute(() -> {
+            try {
+                if (asset.type != AssetType.STOCK) {
+                    error.postValue("Splits apply to stocks only.");
+                    return;
+                }
+                int written = repo.ingestStockEvents(
+                        asset.id,
+                        Collections.<PortfolioRepository.DividendIngest>emptyList(),
+                        Collections.singletonList(new SplitIngest(timestamp, ratio))
+                ).get();
+                if (written == 0) {
+                    error.postValue("A split for "
+                            + asset.ticker + " on " + timestamp.toLocalDate()
+                            + " is already recorded.");
+                    return;
+                }
+                saved.postValue(true);
+            } catch (Exception e) {
+                Log.w(TAG, "split save failed", e);
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
                 error.postValue(cause.getMessage() != null ? cause.getMessage() : cause.toString());
             }

@@ -25,7 +25,10 @@ import com.my.finmon.ui.filter.GlobalFilterViewModel.CustomRange;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 /**
@@ -34,9 +37,10 @@ import java.util.concurrent.ExecutorService;
  * card to a single bucket, period switches the rendered numbers from lifetime to
  * window-scoped P&amp;L.
  *
- * <p>{@code totals} stays as a lifetime/point-in-time read used only for the
- * multi-currency ribbon ("≈ 11,234 EUR · 456,789 UAH") on the totals card. The
- * headline number, invested line, and Period P&amp;L all come from {@link #periodTotals}.
+ * <p>The totals card is fed by a single {@link TotalsCardData} LiveData whose value
+ * is built atomically inside one executor task — both the period figures and the
+ * cross-currency ribbon arrive together so the card never has to re-render with
+ * an extra row sneaking in between the headline and invested.
  *
  * <p>{@code viewExecutor} is separate from {@code ioExecutor} on purpose — blocking
  * on a Future produced by the single-thread ioExecutor would deadlock if the wait
@@ -52,19 +56,13 @@ public final class PortfolioViewModel extends ViewModel {
     private final ExecutorService viewExecutor;
 
     private final MutableLiveData<List<WindowedHolding>> windowedHoldings = new MutableLiveData<>();
-    private final MutableLiveData<PortfolioTotals> totals = new MutableLiveData<>();
-    private final MutableLiveData<PeriodTotals> periodTotals = new MutableLiveData<>();
+    private final MutableLiveData<TotalsCardData> totalsCard = new MutableLiveData<>();
     private final MutableLiveData<String> error = new MutableLiveData<>();
 
-    /**
-     * Display currency only matters for the All-mode totals card here — Allocation
-     * pies moved to the Charts screen and own their own VM. Initialized in the
-     * constructor because it reads {@code this.filter}.
-     */
     private final Observer<Currency> displayCurrencyObserver;
-    private final Observer<Currency> filterCurrencyObserver = c -> refreshWindowed();
-    private final Observer<FilterPeriod> filterPeriodObserver = p -> refreshWindowed();
-    private final Observer<CustomRange> filterCustomRangeObserver = r -> refreshWindowed();
+    private final Observer<Currency> filterCurrencyObserver = c -> refresh();
+    private final Observer<FilterPeriod> filterPeriodObserver = p -> refresh();
+    private final Observer<CustomRange> filterCustomRangeObserver = r -> refresh();
 
     public PortfolioViewModel(
             @NonNull PortfolioRepository repo,
@@ -77,8 +75,8 @@ public final class PortfolioViewModel extends ViewModel {
         this.viewExecutor = viewExecutor;
         this.displayCurrencyObserver = c -> {
             // Display currency drives the All-mode totals card; in specific-currency
-            // mode the totals card is FX-free, so no re-derive needed.
-            if (filter.selectedCurrency().getValue() == null) refreshPeriodTotals();
+            // mode the totals card is FX-free, so a re-derive is cheap and harmless.
+            refresh();
         };
         prefs.displayCurrency().observeForever(displayCurrencyObserver);
         filter.selectedCurrency().observeForever(filterCurrencyObserver);
@@ -97,22 +95,22 @@ public final class PortfolioViewModel extends ViewModel {
     }
 
     @NonNull public LiveData<List<WindowedHolding>> windowedHoldings() { return windowedHoldings; }
-    @NonNull public LiveData<PortfolioTotals> totals() { return totals; }
-    @NonNull public LiveData<PeriodTotals> periodTotals() { return periodTotals; }
+    @NonNull public LiveData<TotalsCardData> totalsCard() { return totalsCard; }
     @NonNull public LiveData<Currency> displayCurrency() { return prefs.displayCurrency(); }
     @NonNull public LiveData<String> error() { return error; }
     @NonNull public LiveData<Currency> filterCurrency() { return filter.selectedCurrency(); }
 
+    /**
+     * Recomputes both the windowed holdings list and the totals card data inside
+     * a single executor task. Posting them from the same task means consumers see
+     * them as one update instead of two flickering through the main thread looper.
+     */
     public void refresh() {
-        refreshWindowed();
-        refreshLifetime();
-    }
-
-    private void refreshWindowed() {
         viewExecutor.execute(() -> {
             LocalDate today = LocalDate.now();
             Window w = computeWindow(today);
             Currency currency = filter.selectedCurrency().getValue();
+
             try {
                 List<WindowedHolding> wh = repo.getWindowedHoldings(currency, w.from, w.to).get();
                 windowedHoldings.postValue(wh);
@@ -120,37 +118,20 @@ public final class PortfolioViewModel extends ViewModel {
                 Log.w(TAG, "windowed holdings refresh failed", e);
                 error.postValue(e.getMessage() != null ? e.getMessage() : e.toString());
             }
-            refreshPeriodTotalsSync(today, w, currency);
-        });
-    }
 
-    private void refreshLifetime() {
-        viewExecutor.execute(() -> {
-            LocalDate today = LocalDate.now();
-            try {
-                totals.postValue(repo.getPortfolioTotals(today).get());
-            } catch (Exception e) {
-                Log.w(TAG, "totals refresh failed", e);
-                error.postValue(e.getMessage() != null ? e.getMessage() : e.toString());
-            }
-        });
-    }
-
-    private void refreshPeriodTotals() {
-        viewExecutor.execute(() -> {
-            LocalDate today = LocalDate.now();
-            Window w = computeWindow(today);
-            refreshPeriodTotalsSync(today, w, filter.selectedCurrency().getValue());
+            TotalsCardData card = computeTotalsCardSync(today, w, currency);
+            if (card != null) totalsCard.postValue(card);
         });
     }
 
     /**
-     * Snapshot-based period totals — same math as Chart's PeriodTotals so the totals
-     * card numbers agree across the two screens for the same filter. The first/last
-     * points come from snapshots in {@code [windowStart, yesterday]} plus today's
-     * live totals appended on the right edge.
+     * Snapshot-based period totals + ribbon + fx-gap flag, in one shape. Same math
+     * as Charts → Value's PeriodTotals so the headline and Period P&amp;L numbers
+     * agree across screens for the same filter. Returns null when there isn't even
+     * a today snapshot to anchor on (empty portfolio, no events at all).
      */
-    private void refreshPeriodTotalsSync(
+    @Nullable
+    private TotalsCardData computeTotalsCardSync(
             @NonNull LocalDate today, @NonNull Window w, @Nullable Currency currency) {
         try {
             LocalDate yesterday = today.minusDays(1);
@@ -160,6 +141,17 @@ public final class PortfolioViewModel extends ViewModel {
             BigDecimal firstValue = null, firstInvested = null;
             BigDecimal lastValue = null, lastInvested = null;
             Currency outCurrency;
+            // Ribbon entries — populated only in All-currency mode from today's
+            // PortfolioTotals. Specific-currency mode has no ribbon (drilled into
+            // a single bucket already).
+            List<RibbonEntry> ribbon = Collections.emptyList();
+            boolean hasFxGaps = false;
+            // Lifetime totals are needed for the ribbon AND for today's value/invested
+            // when in All-currency mode. Pulled once and reused.
+            PortfolioTotals lifetime = null;
+            if (includeToday) {
+                lifetime = repo.getPortfolioTotals(today).get();
+            }
 
             if (currency == null) {
                 Currency display = prefs.getDisplayCurrency();
@@ -176,15 +168,16 @@ public final class PortfolioViewModel extends ViewModel {
                         lastInvested = last.invested;
                     }
                 }
-                if (includeToday) {
-                    PortfolioTotals t = repo.getPortfolioTotals(today).get();
-                    BigDecimal v = t.valueByDisplayCurrency.get(display);
-                    BigDecimal i = t.investedByDisplayCurrency.get(display);
-                    if (v == null) v = t.valueInBase;
-                    if (i == null) i = t.investedInBase;
+                if (lifetime != null) {
+                    BigDecimal v = lifetime.valueByDisplayCurrency.get(display);
+                    BigDecimal i = lifetime.investedByDisplayCurrency.get(display);
+                    if (v == null) v = lifetime.valueInBase;
+                    if (i == null) i = lifetime.investedInBase;
                     if (firstValue == null) { firstValue = v; firstInvested = i; }
                     lastValue = v;
                     lastInvested = i;
+                    ribbon = buildRibbon(lifetime.valueByDisplayCurrency, display);
+                    hasFxGaps = lifetime.hasFxGaps;
                 }
             } else {
                 outCurrency = currency;
@@ -200,9 +193,8 @@ public final class PortfolioViewModel extends ViewModel {
                         lastInvested = last.invested;
                     }
                 }
-                if (includeToday) {
-                    PortfolioTotals t = repo.getPortfolioTotals(today).get();
-                    NativeBucket bucket = t.bucketByCurrency.get(currency);
+                if (lifetime != null) {
+                    NativeBucket bucket = lifetime.bucketByCurrency.get(currency);
                     BigDecimal v = bucket != null ? bucket.value : BigDecimal.ZERO;
                     BigDecimal i = bucket != null ? bucket.invested : BigDecimal.ZERO;
                     if (firstValue == null) { firstValue = v; firstInvested = i; }
@@ -211,10 +203,8 @@ public final class PortfolioViewModel extends ViewModel {
                 }
             }
 
-            if (lastValue == null) {
-                periodTotals.postValue(null);
-                return;
-            }
+            if (lastValue == null) return null;
+
             BigDecimal pnl = lastValue.subtract(lastInvested)
                     .subtract(firstValue.subtract(firstInvested));
             BigDecimal pct = null;
@@ -222,12 +212,32 @@ public final class PortfolioViewModel extends ViewModel {
                 pct = pnl.divide(firstValue.abs(), MathContext.DECIMAL64)
                         .multiply(new BigDecimal("100"));
             }
-            periodTotals.postValue(new PeriodTotals(
-                    outCurrency, lastValue, lastInvested, pnl, pct));
+            return new TotalsCardData(
+                    outCurrency, lastValue, lastInvested, pnl, pct, ribbon, hasFxGaps);
         } catch (Exception e) {
-            Log.w(TAG, "period totals refresh failed", e);
+            Log.w(TAG, "totals card refresh failed", e);
             error.postValue(e.getMessage() != null ? e.getMessage() : e.toString());
+            return null;
         }
+    }
+
+    /**
+     * Build the cross-currency ribbon — the same total expressed in each Currency
+     * other than {@code primary}, ordered by Currency declaration (USD, EUR, UAH)
+     * for stable layout.
+     */
+    @NonNull
+    private static List<RibbonEntry> buildRibbon(
+            @NonNull Map<Currency, BigDecimal> valueByDisplayCurrency,
+            @NonNull Currency primary) {
+        List<RibbonEntry> out = new ArrayList<>();
+        for (Currency c : Currency.values()) {
+            if (c == primary) continue;
+            BigDecimal v = valueByDisplayCurrency.get(c);
+            if (v == null) continue;
+            out.add(new RibbonEntry(c, v));
+        }
+        return Collections.unmodifiableList(out);
     }
 
     @NonNull
@@ -277,29 +287,48 @@ public final class PortfolioViewModel extends ViewModel {
         }
     }
 
+    /** One row of the cross-currency ribbon ("≈ 11,234 EUR · 456,789 UAH"). */
+    public static final class RibbonEntry {
+        @NonNull public final Currency currency;
+        @NonNull public final BigDecimal amount;
+
+        public RibbonEntry(@NonNull Currency currency, @NonNull BigDecimal amount) {
+            this.currency = currency;
+            this.amount = amount;
+        }
+    }
+
     /**
-     * Headline totals card numbers for the active filter. {@code currency} is the
-     * display currency in All mode, the picked currency in specific mode.
+     * Fully-shaped data for the Portfolio totals card. {@link #ribbon} is empty in
+     * specific-currency mode, populated in All mode. {@link #hasFxGaps} drives the
+     * "Some FX rates missing" hint and is only ever true in All mode (specific
+     * currency views are FX-free).
      */
-    public static final class PeriodTotals {
+    public static final class TotalsCardData {
         @NonNull public final Currency currency;
         @NonNull public final BigDecimal valueEnd;
         @NonNull public final BigDecimal investedEnd;
         @NonNull public final BigDecimal periodPnl;
         /** Null when starting value was zero — a percentage isn't meaningful. */
         @Nullable public final BigDecimal periodPnlPct;
+        @NonNull public final List<RibbonEntry> ribbon;
+        public final boolean hasFxGaps;
 
-        public PeriodTotals(
+        public TotalsCardData(
                 @NonNull Currency currency,
                 @NonNull BigDecimal valueEnd,
                 @NonNull BigDecimal investedEnd,
                 @NonNull BigDecimal periodPnl,
-                @Nullable BigDecimal periodPnlPct) {
+                @Nullable BigDecimal periodPnlPct,
+                @NonNull List<RibbonEntry> ribbon,
+                boolean hasFxGaps) {
             this.currency = currency;
             this.valueEnd = valueEnd;
             this.investedEnd = investedEnd;
             this.periodPnl = periodPnl;
             this.periodPnlPct = periodPnlPct;
+            this.ribbon = ribbon;
+            this.hasFxGaps = hasFxGaps;
         }
     }
 }

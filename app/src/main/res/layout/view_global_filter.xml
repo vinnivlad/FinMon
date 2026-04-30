@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Global filter bar — shared by Portfolio, Bonds, Breakdown, Chart. The action row
-    (gear icon → Settings) is always visible since Settings was demoted out of the
-    5-item bottom nav. The chip rows below the action row hide on screens that
-    don't react to the global filter (Market, Settings, modal sub-screens).
+    Global filter bar — shared by Portfolio, Bonds, Breakdown, Charts. Two rows:
+      - Currency chips on the left (scrollable) + Settings gear pinned right.
+      - Period chips below (full-width scrollable).
+    Both rows hide on screens that don't react to the global filter (Market,
+    Settings, modal sub-screens). Reaching Settings from those screens means
+    switching to a filter-aware tab first — accepted trade-off in exchange for
+    not burning a full row on the gear button.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -14,48 +17,46 @@
     android:paddingBottom="4dp"
     android:background="?android:attr/colorBackground">
 
-    <!-- Action row — always visible. Gear icon for Settings (and anything else we
-         add later: e.g. Market launch). -->
-    <LinearLayout
-        android:id="@+id/globalFilterActionRow"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="end"
-        android:paddingHorizontal="8dp">
-
-        <ImageButton
-            android:id="@+id/globalSettingsButton"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_settings"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/settings_title" />
-    </LinearLayout>
-
-    <!-- Chip rows — hidden on Market / Settings / modal sub-screens. -->
     <LinearLayout
         android:id="@+id/globalFilterChipsContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <HorizontalScrollView
-            android:id="@+id/globalCurrencyChipsScroll"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingHorizontal="16dp"
-            android:scrollbars="none">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-            <com.google.android.material.chip.ChipGroup
-                android:id="@+id/globalCurrencyChips"
-                android:layout_width="wrap_content"
+            <HorizontalScrollView
+                android:id="@+id/globalCurrencyChipsScroll"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                app:chipSpacingHorizontal="8dp"
-                app:singleLine="true"
-                app:singleSelection="true"
-                app:selectionRequired="true" />
-        </HorizontalScrollView>
+                android:layout_weight="1"
+                android:paddingStart="16dp"
+                android:paddingEnd="0dp"
+                android:scrollbars="none">
+
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/globalCurrencyChips"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    app:chipSpacingHorizontal="8dp"
+                    app:singleLine="true"
+                    app:singleSelection="true"
+                    app:selectionRequired="true" />
+            </HorizontalScrollView>
+
+            <ImageButton
+                android:id="@+id/globalSettingsButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="8dp"
+                android:src="@drawable/ic_settings"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/settings_title" />
+        </LinearLayout>
 
         <HorizontalScrollView
             android:id="@+id/globalPeriodChipsScroll"
