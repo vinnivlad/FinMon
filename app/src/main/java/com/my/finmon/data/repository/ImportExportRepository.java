@@ -232,9 +232,24 @@ public final class ImportExportRepository {
                 } catch (IllegalArgumentException ex2) {
                     continue;
                 }
-                if (type == AssetType.CASH) continue;
                 Currency ccy = Currency.valueOf(pa.currency);
                 String key = assetKey(pa.ticker, ccy);
+
+                if (type == AssetType.CASH) {
+                    // Cash piles are pre-seeded fresh via seedCashPile() above and can't
+                    // be inserted again. Apply just the metadata that the import file
+                    // carries — currently only `name` (used as the cash bar prefix on
+                    // Portfolio, e.g. "€" for CASH_EUR).
+                    Long cashId = idByKey.get(key);
+                    if (cashId != null && pa.name != null && !pa.name.isBlank()) {
+                        AssetEntity cash = assetDao.findById(cashId);
+                        if (cash != null) {
+                            cash.name = pa.name;
+                            assetDao.update(cash);
+                        }
+                    }
+                    continue;
+                }
                 if (idByKey.containsKey(key)) continue;
 
                 AssetEntity a = new AssetEntity();

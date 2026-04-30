@@ -18,6 +18,8 @@ import com.my.finmon.data.model.EventType;
 import com.my.finmon.data.repository.PortfolioRepository.ExpectedPayment;
 import com.my.finmon.data.repository.PortfolioRepository.ExpectedPaymentsResult;
 import com.my.finmon.databinding.FragmentBondsBinding;
+import com.my.finmon.prefs.UserPreferences;
+import com.my.finmon.ServiceLocator;
 import com.my.finmon.ui.filter.GlobalFilterViewModel;
 
 import java.math.BigDecimal;
@@ -82,32 +84,49 @@ public class BondsFragment extends Fragment {
 
     private void renderExpectedPayments(@Nullable ExpectedPaymentsResult r) {
         if (binding == null) return;
-        if (r == null || r.payments.isEmpty()) {
-            binding.expectedPaymentsBody.setText(R.string.bonds_expected_payments_none);
-            return;
+        boolean empty = (r == null || r.payments.isEmpty());
+
+        binding.expectedPaymentsHeadline.setVisibility(empty ? View.GONE : View.VISIBLE);
+        binding.expectedPaymentsEquivalents.setVisibility(empty ? View.GONE : View.VISIBLE);
+        binding.expectedPaymentsCoupons.setVisibility(empty ? View.GONE : View.VISIBLE);
+        binding.expectedPaymentsMaturity.setVisibility(empty ? View.GONE : View.VISIBLE);
+        binding.expectedPaymentsFxGap.setVisibility(View.GONE);
+        binding.expectedPaymentsEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (empty) return;
+
+        // Headline: total in user's display currency. Mirrors Portfolio's totals card.
+        UserPreferences prefs = ServiceLocator.get(requireContext()).userPreferences();
+        Currency display = prefs.getDisplayCurrency();
+        BigDecimal headlineAmount = r.totalsByDisplayCurrency.get(display);
+        Currency headlineCurrency = display;
+        if (headlineAmount == null) {
+            // Display currency wasn't computable (FX gap) — fall back to repo's
+            // immutable BASE_CURRENCY (USD) total.
+            headlineAmount = r.totalInBase;
+            headlineCurrency = r.baseCurrency;
+        }
+        binding.expectedPaymentsHeadline.setText(
+                MONEY.format(headlineAmount) + " " + headlineCurrency.name());
+
+        // Equivalents ribbon: same total expressed in the *other* display currencies.
+        StringBuilder others = new StringBuilder();
+        for (Currency c : Currency.values()) {
+            if (c == headlineCurrency) continue;
+            BigDecimal v = r.totalsByDisplayCurrency.get(c);
+            if (v == null || v.signum() == 0) continue;
+            if (others.length() > 0) others.append(" · ");
+            others.append(MONEY.format(v)).append(' ').append(c.name());
+        }
+        if (others.length() > 0) {
+            binding.expectedPaymentsEquivalents.setText("≈ " + others);
+            binding.expectedPaymentsEquivalents.setVisibility(View.VISIBLE);
+        } else {
+            binding.expectedPaymentsEquivalents.setVisibility(View.GONE);
         }
 
-        StringBuilder sb = new StringBuilder();
-        // Per-currency rows in declaration order (USD, EUR, UAH) for stable layout.
-        for (Currency c : Currency.values()) {
-            BigDecimal total = r.totalsByCurrency.get(c);
-            if (total == null || total.signum() == 0) continue;
-            if (sb.length() > 0) sb.append('\n');
-            sb.append(c.name()).append(": ").append(MONEY.format(total));
-        }
-        // Base-currency total only adds value when the user holds payments in more
-        // than one currency — collapse the redundant duplicate line otherwise.
-        boolean multiCurrency = countNonZero(r.totalsByCurrency) > 1;
-        if (multiCurrency) {
-            if (sb.length() > 0) sb.append('\n');
-            sb.append("≈ ").append(MONEY.format(r.totalInBase))
-                    .append(' ').append(r.baseCurrency.name());
-            if (r.hasFxGaps) {
-                sb.append(' ').append(getString(R.string.bonds_expected_payments_fx_gap));
-            }
-        }
-        // Type breakdown — sum amounts per type, per currency. So the user can tell
-        // how much of the upcoming flow is coupon income vs principal redemption.
+        // Type breakdown — sum amounts per type, per native currency, so the user can
+        // tell how much of the flow is coupon income vs principal redemption AND in
+        // which currency it'll arrive.
         java.util.EnumMap<Currency, BigDecimal> couponsByCurrency =
                 new java.util.EnumMap<>(Currency.class);
         java.util.EnumMap<Currency, BigDecimal> maturityByCurrency =
@@ -116,14 +135,16 @@ public class BondsFragment extends Fragment {
             (p.type == EventType.MATURITY ? maturityByCurrency : couponsByCurrency)
                     .merge(p.currency, p.amount, BigDecimal::add);
         }
-        appendTypeLine(sb, couponsByCurrency, R.string.bonds_expected_type_coupons);
-        appendTypeLine(sb, maturityByCurrency, R.string.bonds_expected_type_maturity);
+        bindTypeLine(binding.expectedPaymentsCoupons,
+                couponsByCurrency, R.string.bonds_expected_type_coupons);
+        bindTypeLine(binding.expectedPaymentsMaturity,
+                maturityByCurrency, R.string.bonds_expected_type_maturity);
 
-        binding.expectedPaymentsBody.setText(sb.toString());
+        binding.expectedPaymentsFxGap.setVisibility(r.hasFxGaps ? View.VISIBLE : View.GONE);
     }
 
-    private void appendTypeLine(
-            @NonNull StringBuilder sb,
+    private void bindTypeLine(
+            @NonNull android.widget.TextView view,
             @NonNull Map<Currency, BigDecimal> byCurrency,
             int labelRes) {
         StringBuilder amounts = new StringBuilder();
@@ -133,17 +154,12 @@ public class BondsFragment extends Fragment {
             if (amounts.length() > 0) amounts.append(", ");
             amounts.append(MONEY.format(v)).append(' ').append(c.name());
         }
-        if (amounts.length() == 0) return;
-        if (sb.length() > 0) sb.append('\n');
-        sb.append(getString(labelRes, amounts.toString()));
-    }
-
-    private static int countNonZero(@NonNull Map<Currency, BigDecimal> map) {
-        int n = 0;
-        for (BigDecimal v : map.values()) {
-            if (v != null && v.signum() != 0) n++;
+        if (amounts.length() == 0) {
+            view.setVisibility(View.GONE);
+        } else {
+            view.setText(getString(labelRes, amounts.toString()));
+            view.setVisibility(View.VISIBLE);
         }
-        return n;
     }
 
     @Override

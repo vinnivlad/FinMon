@@ -36,13 +36,56 @@
                 android:textAllCaps="true" />
 
             <TextView
-                android:id="@+id/expectedPaymentsBody"
-                android:layout_width="match_parent"
+                android:id="@+id/expectedPaymentsHeadline"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:textAppearance="?attr/textAppearanceHeadlineMedium"
+                android:layout_marginTop="4dp"
+                tools:text="2,000.00 USD" />
+
+            <TextView
+                android:id="@+id/expectedPaymentsEquivalents"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:alpha="0.7"
+                android:layout_marginTop="2dp"
+                tools:text="≈ 1,840.00 EUR · 75,000 UAH" />
+
+            <TextView
+                android:id="@+id/expectedPaymentsCoupons"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:textAppearance="?attr/textAppearanceBodyMedium"
-                android:text="@string/bonds_expected_payments_placeholder"
-                tools:text="USD: 1,200.00\nEUR: 540.00\n≈ 2,000.00 USD" />
+                android:layout_marginTop="8dp"
+                tools:text="Coupons: 1,200.00 USD, 50,000.00 UAH" />
+
+            <TextView
+                android:id="@+id/expectedPaymentsMaturity"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:layout_marginTop="2dp"
+                tools:text="Maturity: 25,000.00 UAH" />
+
+            <TextView
+                android:id="@+id/expectedPaymentsEmpty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:alpha="0.7"
+                android:visibility="gone"
+                android:text="@string/bonds_expected_payments_none" />
+
+            <TextView
+                android:id="@+id/expectedPaymentsFxGap"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:alpha="0.6"
+                android:layout_marginTop="6dp"
+                android:visibility="gone"
+                android:text="@string/bonds_expected_payments_fx_gap" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 

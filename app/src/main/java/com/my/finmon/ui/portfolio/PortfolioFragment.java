@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.my.finmon.R;
+import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
 import com.my.finmon.data.repository.PortfolioRepository.WindowedHolding;
@@ -97,10 +98,59 @@ public class PortfolioFragment extends Fragment {
     private void renderHoldings(@Nullable List<WindowedHolding> active) {
         if (binding == null) return;
         if (active == null) active = Collections.emptyList();
-        List<HoldingsAdapter.Item> items = new ArrayList<>(active.size());
-        for (WindowedHolding wh : active) items.add(new HoldingsAdapter.Item.Active(wh));
+
+        // Cash piles are summarised in the cashBar above the list, so they don't
+        // belong in the asset rows. Sort STOCK → BOND → (CASH never reaches the
+        // adapter but keeps the comparator total). AssetType ordinal happens to
+        // match that order, so a plain ordinal compare does the job.
+        List<WindowedHolding> sorted = new ArrayList<>(active);
+        sorted.sort((a, b) -> Integer.compare(
+                a.holding.asset.type.ordinal(), b.holding.asset.type.ordinal()));
+
+        List<HoldingsAdapter.Item> items = new ArrayList<>(sorted.size());
+        for (WindowedHolding wh : sorted) {
+            if (wh.holding.asset.type == AssetType.CASH) continue;
+            items.add(new HoldingsAdapter.Item.Active(wh));
+        }
         holdingsAdapter.submitList(items);
+
+        renderCashBar(active);
+
+        // Empty-state triggers off the *full* list — if the user has only cash and
+        // no STOCK/BOND, we want them to see the cash bar rather than the "no
+        // holdings yet" placeholder.
         binding.emptyState.setVisibility(active.isEmpty() ? View.VISIBLE : View.GONE);
+    }
+
+    private void renderCashBar(@NonNull List<WindowedHolding> all) {
+        if (binding == null) return;
+        // Iterate in Currency declaration order (USD, EUR, UAH) for stable layout.
+        StringBuilder sb = new StringBuilder();
+        for (Currency c : Currency.values()) {
+            WindowedHolding cashHolding = null;
+            for (WindowedHolding wh : all) {
+                if (wh.holding.asset.type == AssetType.CASH && wh.holding.asset.currency == c) {
+                    cashHolding = wh;
+                    break;
+                }
+            }
+            if (cashHolding == null) continue;
+            BigDecimal balance = cashHolding.holding.quantity;
+            if (balance.signum() == 0) continue;
+            if (sb.length() > 0) sb.append("  ·  ");
+            // Suffix is whatever name the cash asset carries — set via the import
+            // JSON's "name" field (e.g. "€" for CASH_EUR). Falls back to the
+            // currency code when the asset has no name yet.
+            String suffix = cashHolding.holding.asset.name;
+            if (suffix == null || suffix.isBlank()) suffix = c.name();
+            sb.append(MONEY.format(balance)).append(' ').append(suffix);
+        }
+        if (sb.length() == 0) {
+            binding.cashBar.setVisibility(View.GONE);
+        } else {
+            binding.cashBar.setText(sb.toString());
+            binding.cashBar.setVisibility(View.VISIBLE);
+        }
     }
 
     private void rebindTotalsCard() {

@@ -54,7 +54,7 @@
     <string name="totals_fx_gap_hint">Some FX rates missing — figures may be slightly off.</string>
 
     <!-- Currency breakdown screen -->
-    <string name="breakdown_title">By currency</string>
+    <string name="breakdown_title">Breakdown</string>
 
     <!-- Charts screen tabs -->
     <string name="charts_title">Charts</string>

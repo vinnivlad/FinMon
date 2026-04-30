@@ -833,12 +833,15 @@ public final class PortfolioRepository {
             @NonNull LocalDate asOf, @Nullable Currency currencyFilter) {
         List<ExpectedPayment> rows = new ArrayList<>();
         Map<Currency, BigDecimal> totalsByCurrency = new EnumMap<>(Currency.class);
+        Map<Currency, BigDecimal> totalsByDisplayCurrency = new EnumMap<>(Currency.class);
+        for (Currency c : Currency.values()) totalsByDisplayCurrency.put(c, BigDecimal.ZERO);
         BigDecimal totalInBase = BigDecimal.ZERO;
         boolean hasFxGaps = false;
 
         if (nbuClient == null) {
             return new ExpectedPaymentsResult(
-                    rows, totalsByCurrency, totalInBase, BASE_CURRENCY, hasFxGaps);
+                    rows, totalsByCurrency, totalsByDisplayCurrency,
+                    totalInBase, BASE_CURRENCY, hasFxGaps);
         }
 
         LocalDateTime upTo = endOfDay(asOf);
@@ -893,6 +896,20 @@ public final class PortfolioRepository {
 
                 totalsByCurrency.merge(asset.currency, amount, BigDecimal::add);
 
+                // Cross-currency totals: same amount expressed in each display
+                // currency. Empty FX → flagged via hasFxGaps; rows that can't
+                // convert just don't contribute to the affected display total.
+                for (Currency display : Currency.values()) {
+                    BigDecimal inDisplay = (display == asset.currency)
+                            ? amount
+                            : convert(amount, asset.currency, display, asOf);
+                    if (inDisplay == null) {
+                        hasFxGaps = true;
+                    } else {
+                        totalsByDisplayCurrency.merge(display, inDisplay, BigDecimal::add);
+                    }
+                }
+
                 BigDecimal inBase = convert(amount, asset.currency, BASE_CURRENCY, asOf);
                 if (inBase == null) {
                     hasFxGaps = true;
@@ -905,7 +922,8 @@ public final class PortfolioRepository {
         rows.sort(Comparator.comparing((ExpectedPayment ep) -> ep.date)
                 .thenComparing(ep -> ep.ticker));
         return new ExpectedPaymentsResult(
-                rows, totalsByCurrency, totalInBase, BASE_CURRENCY, hasFxGaps);
+                rows, totalsByCurrency, totalsByDisplayCurrency,
+                totalInBase, BASE_CURRENCY, hasFxGaps);
     }
 
     /**
@@ -2168,7 +2186,11 @@ public final class PortfolioRepository {
      */
     public static final class ExpectedPaymentsResult {
         @NonNull public final List<ExpectedPayment> payments;
+        /** Native-currency sums (e.g. UAH → 50,000 means 50,000 UAH expected). */
         @NonNull public final Map<Currency, BigDecimal> totalsByCurrency;
+        /** Same total expressed in each display currency — picks one for the
+         *  card headline, others form the "≈ …" ribbon. */
+        @NonNull public final Map<Currency, BigDecimal> totalsByDisplayCurrency;
         @NonNull public final BigDecimal totalInBase;
         @NonNull public final Currency baseCurrency;
         public final boolean hasFxGaps;
@@ -2176,11 +2198,13 @@ public final class PortfolioRepository {
         public ExpectedPaymentsResult(
                 @NonNull List<ExpectedPayment> payments,
                 @NonNull Map<Currency, BigDecimal> totalsByCurrency,
+                @NonNull Map<Currency, BigDecimal> totalsByDisplayCurrency,
                 @NonNull BigDecimal totalInBase,
                 @NonNull Currency baseCurrency,
                 boolean hasFxGaps) {
             this.payments = payments;
             this.totalsByCurrency = totalsByCurrency;
+            this.totalsByDisplayCurrency = totalsByDisplayCurrency;
             this.totalInBase = totalInBase;
             this.baseCurrency = baseCurrency;
             this.hasFxGaps = hasFxGaps;
