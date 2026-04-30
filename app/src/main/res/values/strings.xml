@@ -195,7 +195,15 @@
     <string name="startup_stage_snapshots_indeterminate">Computing snapshots…</string>
     <string name="startup_failed_title">Sync failed</string>
     <string name="startup_failed_message">%1$s</string>
+    <string name="startup_failed_at_stage">Step: %1$s\n\n%2$s</string>
     <string name="startup_failed_no_internet">No internet connection. Connect to a network and retry, or continue with whatever\'s currently stored.</string>
     <string name="startup_action_retry">Retry</string>
     <string name="startup_action_continue">Continue with stale data</string>
+    <!-- Stage display names used in the failure overlay's "Step: …" line. -->
+    <string name="stage_name_importing">Importing data</string>
+    <string name="stage_name_stock_prices">Stock prices</string>
+    <string name="stage_name_fx">Exchange rates</string>
+    <string name="stage_name_bond_coupons">Bond coupons</string>
+    <string name="stage_name_snapshots">Computing snapshots</string>
+    <string name="stage_name_other">Sync</string>
 </resources>

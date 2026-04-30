@@ -177,6 +177,16 @@ public final class MarketDataRepository {
     }
 
     /**
+     * Drops the in-memory NBU bond catalog cache. The next {@link #findBondByIsin} or
+     * {@link #searchBonds} call will re-fetch from the network. Called by the sync
+     * orchestrator's Retry path.
+     */
+    @NonNull
+    public Future<?> dropBondCatalogCache() {
+        return executor.submit(nbuClient::invalidateCache);
+    }
+
+    /**
      * Fetches EUR-based rates from Frankfurter (provider NBU) for [{@code from}, {@code to}]
      * inclusive, computes every directed pair among {USD, EUR, UAH}, and upserts the
      * resulting {@code ExchangeRateEntity} rows. Returns the number of rows written —

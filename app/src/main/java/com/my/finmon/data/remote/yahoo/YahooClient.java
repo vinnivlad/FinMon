@@ -116,7 +116,7 @@ public final class YahooClient {
         if (!resp.isSuccessful()) {
             throw new IOException("Yahoo HTTP " + resp.code() + " for " + remoteSymbol);
         }
-        return toSeries(remoteSymbol, firstResult(resp.body()));
+        return toSeries(remoteSymbol, firstResult(remoteSymbol, resp.body()));
     }
 
     /**
@@ -135,7 +135,7 @@ public final class YahooClient {
         if (!resp.isSuccessful()) {
             throw new IOException("Yahoo HTTP " + resp.code() + " for " + remoteSymbol);
         }
-        return toSeries(remoteSymbol, firstResult(resp.body()));
+        return toSeries(remoteSymbol, firstResult(remoteSymbol, resp.body()));
     }
 
     @NonNull
@@ -184,7 +184,7 @@ public final class YahooClient {
         if (!resp.isSuccessful()) {
             throw new IOException("Yahoo chart HTTP " + resp.code() + " for " + remoteSymbol);
         }
-        YahooChartResponse.Result r = firstResult(resp.body());
+        YahooChartResponse.Result r = firstResult(remoteSymbol, resp.body());
         if (r == null || r.meta == null) return null;
         return r.meta.currency;
     }
@@ -209,7 +209,7 @@ public final class YahooClient {
         }
 
         YahooChartResponse body = resp.body();
-        YahooChartResponse.Result r = firstResult(body);
+        YahooChartResponse.Result r = firstResult(remoteSymbol, body);
         if (r == null) return DailyAndEvents.empty();
 
         List<StockPriceEntity> prices = toPriceRows(r, storageTicker, from, to);
@@ -218,10 +218,22 @@ public final class YahooClient {
         return new DailyAndEvents(prices, dividends, splits);
     }
 
+    /**
+     * Unwraps the {@code chart} envelope. Yahoo returns 200 with a populated
+     * {@code chart.error} for "symbol not found"-style problems instead of an HTTP
+     * status, so we promote that to an {@code IOException} — silently treating it as
+     * "no data" let bad tickers slip through the sync stages without surfacing.
+     */
     @Nullable
-    private static YahooChartResponse.Result firstResult(@Nullable YahooChartResponse body) {
+    private static YahooChartResponse.Result firstResult(
+            @NonNull String symbol, @Nullable YahooChartResponse body) throws IOException {
         if (body == null || body.chart == null) return null;
-        if (body.chart.error != null) return null;
+        if (body.chart.error != null) {
+            String code = body.chart.error.code != null ? body.chart.error.code : "?";
+            String desc = body.chart.error.description != null ? body.chart.error.description : "";
+            throw new IOException("Yahoo error for " + symbol + ": " + code
+                    + (desc.isEmpty() ? "" : " — " + desc));
+        }
         if (body.chart.result == null || body.chart.result.isEmpty()) return null;
         return body.chart.result.get(0);
     }

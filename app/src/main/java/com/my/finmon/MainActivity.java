@@ -3,6 +3,7 @@ package com.my.finmon;
 import android.os.Bundle;
 import android.view.View;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.navigation.NavController;
 import androidx.navigation.NavOptions;
@@ -20,6 +21,7 @@ public class MainActivity extends AppCompatActivity {
 
     private ActivityMainBinding binding;
     private StartupSyncOrchestrator orchestrator;
+    private NavController navController;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -29,7 +31,7 @@ public class MainActivity extends AppCompatActivity {
 
         NavHostFragment navHost = (NavHostFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.nav_host_fragment);
-        NavController navController = navHost.getNavController();
+        navController = navHost.getNavController();
 
         AppBarConfiguration appBarConfig = new AppBarConfiguration.Builder(
                 R.id.portfolioFragment,
@@ -77,6 +79,21 @@ public class MainActivity extends AppCompatActivity {
         if (s.stage == Stage.DONE) {
             binding.startupOverlay.setVisibility(View.GONE);
             binding.bottomNav.setVisibility(View.VISIBLE);
+            // After a successful import, jump to Portfolio so the user sees the freshly
+            // restored data instead of the Settings screen they triggered Import from.
+            // consumeImportJustFinished() is one-shot so rotation doesn't re-navigate.
+            if (orchestrator.consumeImportJustFinished()) {
+                NavOptions options = new NavOptions.Builder()
+                        .setLaunchSingleTop(true)
+                        .setPopUpTo(navController.getGraph().getStartDestinationId(),
+                                /* inclusive */ false, /* saveState */ false)
+                        .build();
+                try {
+                    navController.navigate(R.id.portfolioFragment, null, options);
+                } catch (IllegalArgumentException ignored) {
+                    // Already on Portfolio, or graph not ready — safe to drop.
+                }
+            }
             return;
         }
 
@@ -97,6 +114,12 @@ public class MainActivity extends AppCompatActivity {
             String msg;
             if (StartupSyncOrchestrator.ERROR_NO_INTERNET.equals(s.errorMessage)) {
                 msg = getString(R.string.startup_failed_no_internet);
+            } else if (s.failedStage != null) {
+                // Stage-tagged structured failure: prefix with the stage name so the user
+                // immediately knows which step broke (Bond coupons, Stock prices, etc.).
+                msg = getString(R.string.startup_failed_at_stage,
+                        stageDisplayName(s.failedStage),
+                        s.errorMessage != null ? s.errorMessage : "");
             } else {
                 msg = getString(R.string.startup_failed_message,
                         s.errorMessage != null ? s.errorMessage : "");
@@ -107,6 +130,17 @@ public class MainActivity extends AppCompatActivity {
 
         binding.startupStatus.setVisibility(View.VISIBLE);
         binding.startupStatus.setText(stageLabel(s));
+    }
+
+    private String stageDisplayName(@NonNull Stage stage) {
+        switch (stage) {
+            case IMPORTING:    return getString(R.string.stage_name_importing);
+            case STOCK_PRICES: return getString(R.string.stage_name_stock_prices);
+            case FX:           return getString(R.string.stage_name_fx);
+            case BOND_COUPONS: return getString(R.string.stage_name_bond_coupons);
+            case SNAPSHOTS:    return getString(R.string.stage_name_snapshots);
+            default:           return getString(R.string.stage_name_other);
+        }
     }
 
     private String stageLabel(Status s) {

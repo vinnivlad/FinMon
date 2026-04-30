@@ -59,6 +59,16 @@ public final class NbuClient {
     }
 
     /**
+     * Discards the cache without re-fetching. The next {@link #fetchAllCached} or
+     * {@link #findByIsin} call will hit the network. Used by the sync orchestrator's
+     * Retry path so a click on Retry actually retries against fresh data.
+     */
+    public synchronized void invalidateCache() {
+        cached = null;
+        cachedAt = 0L;
+    }
+
+    /**
      * Substring search against {@code cpcode} (ISIN) and {@code cpdescr}/{@code emit_name},
      * case-insensitive. Capped at {@value SEARCH_RESULT_CAP} hits — the list is huge and
      * an unfiltered match would flood the autocomplete dropdown.

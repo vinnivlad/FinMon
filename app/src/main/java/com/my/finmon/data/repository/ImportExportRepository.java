@@ -26,6 +26,8 @@ import com.my.finmon.data.remote.yahoo.YahooClient;
 import com.my.finmon.data.remote.yahoo.YahooClient.DailyAndEvents;
 import com.my.finmon.data.repository.PortfolioRepository.DividendIngest;
 import com.my.finmon.data.repository.PortfolioRepository.SplitIngest;
+import com.my.finmon.sync.SyncEngine;
+import com.my.finmon.sync.SyncEngine.StageFailedException;
 import com.squareup.moshi.JsonAdapter;
 import com.squareup.moshi.Moshi;
 
@@ -293,6 +295,12 @@ public final class ImportExportRepository {
      * Pulls remote market data and routes it through the existing idempotent ingest
      * paths. Returns the count of synthesized events (dividends/splits/coupons that
      * weren't in the import file but are now in the DB).
+     *
+     * <p>Per-asset Yahoo and NBU failures are collected and surfaced as a
+     * {@link StageFailedException} (mirroring cold-launch {@link SyncEngine} stages)
+     * so the import overlay shows a {@code Step: …} failure instead of silently
+     * leaving the user with un-enriched data they can't trust. FX failures stay
+     * log-and-continue — partial FX produces gappy snapshots, not corrupted ones.
      */
     private int enrichAfterImport(@NonNull PortableExport ex) {
         int total = 0;
@@ -309,6 +317,7 @@ public final class ImportExportRepository {
 
         // 2) Per-stock: prices + dividends + splits via Yahoo. Skip stocks without a
         //    remoteTicker — those are manual-price assets we can't enrich.
+        List<String> failedStocks = new ArrayList<>();
         for (PortableAsset pa : ex.assets) {
             if (pa == null || !"STOCK".equals(pa.type)) continue;
             if (pa.remoteTicker == null || pa.remoteTicker.isBlank()) continue;
@@ -337,10 +346,22 @@ public final class ImportExportRepository {
                 }
             } catch (Exception e) {
                 Log.w(TAG, "Yahoo enrichment failed for " + pa.ticker, e);
+                failedStocks.add(pa.ticker);
             }
         }
+        if (!failedStocks.isEmpty()) {
+            throw new StageFailedException(SyncEngine.Stage.STOCK_PRICES,
+                    "Yahoo fetch failed for: " + String.join(", ", failedStocks));
+        }
 
-        // 3) Per-bond: NBU coupon schedule.
+        // 3) Per-bond: NBU coupon schedule. Bonds the import already marked matured
+        //    (MATURITY event present) are skipped — NBU drops matured bonds from the
+        //    feed entirely, so absence is expected and shouldn't read as a failure.
+        Set<Long> maturedIds = new HashSet<>();
+        for (Long id : eventDao.findMaturedBondIds()) {
+            if (id != null) maturedIds.add(id);
+        }
+        List<String> missingFromNbu = new ArrayList<>();
         for (PortableAsset pa : ex.assets) {
             if (pa == null || !"BOND".equals(pa.type)) continue;
             if (pa.isin == null || pa.isin.isBlank()) continue;
@@ -348,11 +369,22 @@ public final class ImportExportRepository {
             if (ccy == null) continue;
             AssetEntity bond = assetDao.findByTickerAndCurrency(pa.ticker, ccy);
             if (bond == null) continue;
+            if (maturedIds.contains(bond.id)) continue;
+
+            NbuBondDto dto;
+            try {
+                dto = marketData.findBondByIsin(pa.isin).get();
+            } catch (Exception e) {
+                Log.w(TAG, "NBU lookup threw for " + pa.ticker, e);
+                missingFromNbu.add(pa.ticker + " (" + pa.isin + ")");
+                continue;
+            }
+            if (dto == null || dto.payments == null) {
+                missingFromNbu.add(pa.ticker + " (" + pa.isin + ")");
+                continue;
+            }
 
             try {
-                NbuBondDto dto = marketData.findBondByIsin(pa.isin).get();
-                if (dto == null || dto.payments == null) continue;
-
                 List<DividendIngest> coupons = new ArrayList<>();
                 for (NbuBondDto.Payment p : dto.payments) {
                     if (p == null || !"1".equals(p.pay_type)) continue;  // coupons only
@@ -370,8 +402,14 @@ public final class ImportExportRepository {
                 Integer written = portfolio.ingestBondCoupons(bond.id, coupons).get();
                 if (written != null) total += written;
             } catch (Exception e) {
-                Log.w(TAG, "NBU enrichment failed for " + pa.ticker, e);
+                // Ingest-side failure (DB write) — NBU itself responded fine, so don't
+                // misattribute it to a missing schedule. Logged for diagnostics only.
+                Log.w(TAG, "NBU ingest failed for " + pa.ticker, e);
             }
+        }
+        if (!missingFromNbu.isEmpty()) {
+            throw new StageFailedException(SyncEngine.Stage.BOND_COUPONS,
+                    "Couldn't find coupon schedules for: " + String.join(", ", missingFromNbu));
         }
 
         return total;

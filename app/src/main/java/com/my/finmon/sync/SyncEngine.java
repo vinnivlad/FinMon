@@ -26,7 +26,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Shared sync logic for both the periodic {@link PortfolioSyncWorker} and the foreground
@@ -43,6 +45,20 @@ public final class SyncEngine {
     private static final int BOOTSTRAP_DAYS = 7;
 
     public enum Stage { STOCK_PRICES, FX, BOND_COUPONS, SNAPSHOTS }
+
+    /**
+     * Raised when a stage finished but with a problem worth surfacing to the user
+     * (per-bond NBU schedule missing, Yahoo fetch threw for a held stock, etc.).
+     * The orchestrator catches it and routes to {@code Stage.FAILED} with the
+     * originating stage attached for the UI to render.
+     */
+    public static final class StageFailedException extends RuntimeException {
+        @NonNull public final Stage stage;
+        public StageFailedException(@NonNull Stage stage, @NonNull String message) {
+            super(message);
+            this.stage = stage;
+        }
+    }
 
     /**
      * Per-stage progress hook. {@code label} is a short human-readable string of what's
@@ -83,6 +99,7 @@ public final class SyncEngine {
         }
 
         int idx = 0;
+        List<String> fetchFailed = new ArrayList<>();
         for (AssetEntity stock : stocks) {
             if (stock.remoteTicker == null || stock.remoteTicker.isBlank()) continue;
             idx++;
@@ -114,7 +131,13 @@ public final class SyncEngine {
                 }
             } catch (Exception e) {
                 Log.w(TAG, "Yahoo sync failed for " + stock.ticker, e);
+                fetchFailed.add(stock.ticker);
             }
+        }
+
+        if (!fetchFailed.isEmpty()) {
+            throw new StageFailedException(Stage.STOCK_PRICES,
+                    "Yahoo fetch failed for: " + String.join(", ", fetchFailed));
         }
     }
 
@@ -134,6 +157,9 @@ public final class SyncEngine {
             Log.i(TAG, "Frankfurter " + from + "→" + yesterday + ": " + rows + " rows");
         } catch (Exception e) {
             Log.w(TAG, "Frankfurter sync failed", e);
+            throw new StageFailedException(Stage.FX,
+                    "Frankfurter FX fetch failed: "
+                            + (e.getMessage() != null ? e.getMessage() : e.toString()));
         }
     }
 
@@ -143,23 +169,42 @@ public final class SyncEngine {
         List<AssetEntity> bonds = sl.database().assetDao().findByType(AssetType.BOND);
         LocalDate today = LocalDate.now();
 
+        // Matured bonds are dropped from NBU's depo_securities feed entirely; skipping
+        // them here means a "missing from NBU" finding for the remainder is a real
+        // signal worth surfacing to the user, not the routine matured-bond case.
+        Set<Long> maturedIds = new HashSet<>();
+        for (Long id : sl.database().eventDao().findMaturedBondIds()) {
+            if (id != null) maturedIds.add(id);
+        }
+
         int total = 0;
         for (AssetEntity b : bonds) {
-            if (b.isin != null && !b.isin.isBlank()) total++;
+            if (b.isin != null && !b.isin.isBlank() && !maturedIds.contains(b.id)) total++;
         }
 
         int idx = 0;
+        List<String> missingFromNbu = new ArrayList<>();
         for (AssetEntity bond : bonds) {
             if (bond.isin == null || bond.isin.isBlank()) continue;
+            if (maturedIds.contains(bond.id)) continue;  // matured — expected absence
             idx++;
             cb.onProgress(Stage.BOND_COUPONS, idx, total, bond.ticker);
 
+            NbuBondDto dto;
             try {
-                NbuBondDto dto = md.findBondByIsin(bond.isin).get();
-                if (dto == null || dto.payments == null) {
-                    Log.i(TAG, "NBU has no schedule for " + bond.isin);
-                    continue;
-                }
+                dto = md.findBondByIsin(bond.isin).get();
+            } catch (Exception e) {
+                Log.w(TAG, "NBU lookup threw for " + bond.ticker, e);
+                missingFromNbu.add(bond.ticker + " (" + bond.isin + ")");
+                continue;
+            }
+            if (dto == null || dto.payments == null) {
+                Log.i(TAG, "NBU has no schedule for " + bond.isin);
+                missingFromNbu.add(bond.ticker + " (" + bond.isin + ")");
+                continue;
+            }
+
+            try {
                 List<DividendIngest> coupons = new ArrayList<>();
                 LocalDate maturityDate = null;
                 for (NbuBondDto.Payment p : dto.payments) {
@@ -189,8 +234,16 @@ public final class SyncEngine {
                     }
                 }
             } catch (Exception e) {
-                Log.w(TAG, "NBU coupon/maturity sync failed for " + bond.ticker, e);
+                // Ingest-side failure (DB write, parsing) — log but don't surface, since
+                // NBU itself responded fine. Worth tracking separately if it becomes a
+                // recurring issue, but most likely benign mid-DB write.
+                Log.w(TAG, "ingest failed for " + bond.ticker, e);
             }
+        }
+
+        if (!missingFromNbu.isEmpty()) {
+            throw new StageFailedException(Stage.BOND_COUPONS,
+                    "Couldn't find coupon schedules for: " + String.join(", ", missingFromNbu));
         }
     }
 
@@ -223,6 +276,9 @@ public final class SyncEngine {
                         cb.onProgress(Stage.SNAPSHOTS, current, total, label)).get();
             } catch (Exception e) {
                 Log.w(TAG, "batch snapshot rebuild failed", e);
+                throw new StageFailedException(Stage.SNAPSHOTS,
+                        "Snapshot rebuild failed: "
+                                + (e.getMessage() != null ? e.getMessage() : e.toString()));
             }
         }
 
