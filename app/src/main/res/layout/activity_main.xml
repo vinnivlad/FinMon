@@ -127,4 +127,61 @@
         </LinearLayout>
     </FrameLayout>
 
+    <!--
+        App-lock overlay. Sits on top of everything (including the startup overlay)
+        until biometric / device-credential auth succeeds. Covers all data so the
+        screen is unreadable when the device is unlocked but FinMon is locked.
+
+        clickable=true blocks touches from leaking through. Visible by default —
+        MainActivity hides it after the first successful unlock and re-shows it on
+        every onStart while the activity is locked.
+    -->
+    <FrameLayout
+        android:id="@+id/lockOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="?android:attr/colorBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="visible"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="visible">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingHorizontal="32dp">
+
+            <TextView
+                android:id="@+id/lockTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceTitleLarge"
+                android:text="@string/app_lock_title" />
+
+            <TextView
+                android:id="@+id/lockSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:textAlignment="center"
+                android:alpha="0.8"
+                android:text="@string/app_lock_subtitle" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/lockUnlockButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="@string/app_lock_action_unlock" />
+        </LinearLayout>
+    </FrameLayout>
+
 </androidx.constraintlayout.widget.ConstraintLayout>

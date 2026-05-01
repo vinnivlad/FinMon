@@ -5,6 +5,9 @@ import android.view.View;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -28,10 +31,28 @@ import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
 
+    /**
+     * BIOMETRIC_WEAK (face/iris/Class 2) + DEVICE_CREDENTIAL (PIN/pattern/password).
+     * STRONG would also be accepted since fingerprint sensors satisfy WEAK; using
+     * STRONG explicitly would lock out face-unlock-only devices, which is needlessly
+     * strict for "is the device owner here?" — we don't crypto-bind anything.
+     */
+    private static final int LOCK_AUTHENTICATORS =
+            BiometricManager.Authenticators.BIOMETRIC_WEAK
+                    | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
+
     private ActivityMainBinding binding;
     private StartupSyncOrchestrator orchestrator;
     private NavController navController;
     private GlobalFilterViewModel filterVm;
+
+    /** True after the user authenticated; cleared on every {@link #onStop()} so the
+     *  next foregrounding re-prompts. Banking-app behavior. */
+    private boolean unlocked;
+    /** Set while the system biometric/credential sheet is in front. Some devices
+     *  put the calling activity through onStop while it's showing — without this
+     *  flag we'd race to re-lock and re-prompt mid-prompt. */
+    private boolean promptInFlight;
 
     /** Destinations where the global filter bar is visible. Anything else (Market,
      *  Settings, modal sub-screens like AddTrade) hides the bar. */
@@ -120,6 +141,31 @@ public class MainActivity extends AppCompatActivity {
         });
 
         navController.addOnDestinationChangedListener(this::onDestinationChanged);
+
+        binding.lockUnlockButton.setOnClickListener(v -> promptUnlock());
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        // First foregrounding (cold start) AND every return from background land
+        // here. If we're not unlocked, gate everything behind biometric/credential
+        // prompt so a stolen-but-unlocked device can't peek at portfolio data.
+        if (!unlocked && !promptInFlight) {
+            showLockOverlay();
+            promptUnlock();
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // Re-lock on backgrounding so the next return foregrounds the prompt again.
+        // promptInFlight guards against the system biometric sheet bouncing us
+        // through onStop while we're mid-authentication.
+        if (!promptInFlight) {
+            unlocked = false;
+        }
     }
 
     @Override
@@ -128,6 +174,67 @@ public class MainActivity extends AppCompatActivity {
         // After import/trade the held-currency set may have changed — re-derive so the
         // chip row stays in sync with reality.
         if (filterVm != null) filterVm.refreshAvailableCurrencies();
+    }
+
+    private void showLockOverlay() {
+        binding.lockOverlay.setVisibility(View.VISIBLE);
+    }
+
+    private void hideLockOverlay() {
+        binding.lockOverlay.setVisibility(View.GONE);
+    }
+
+    private void promptUnlock() {
+        BiometricManager bm = BiometricManager.from(this);
+        if (bm.canAuthenticate(LOCK_AUTHENTICATORS) != BiometricManager.BIOMETRIC_SUCCESS) {
+            // No usable credentials on the device — biometrics not enrolled and no
+            // PIN/pattern set. We can't enforce the lock without locking the user
+            // out entirely, so let them in. The overlay still hides cleanly.
+            unlocked = true;
+            hideLockOverlay();
+            return;
+        }
+
+        promptInFlight = true;
+        BiometricPrompt prompt = new BiometricPrompt(
+                this,
+                ContextCompat.getMainExecutor(this),
+                new BiometricPrompt.AuthenticationCallback() {
+                    @Override
+                    public void onAuthenticationSucceeded(
+                            @NonNull BiometricPrompt.AuthenticationResult result) {
+                        promptInFlight = false;
+                        unlocked = true;
+                        hideLockOverlay();
+                    }
+
+                    @Override
+                    public void onAuthenticationError(int errorCode,
+                                                       @NonNull CharSequence errString) {
+                        promptInFlight = false;
+                        // User canceled or hit back — drop them out of the app rather
+                        // than leaving a stuck unlock screen with no obvious next step.
+                        // The Retry button on the overlay covers the case where the
+                        // system dismissed the prompt for transient reasons.
+                        if (errorCode == BiometricPrompt.ERROR_USER_CANCELED
+                                || errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON
+                                || errorCode == BiometricPrompt.ERROR_CANCELED) {
+                            finishAndRemoveTask();
+                        }
+                    }
+
+                    @Override
+                    public void onAuthenticationFailed() {
+                        // Wrong fingerprint/face — system prompt stays open for retry.
+                    }
+                });
+
+        BiometricPrompt.PromptInfo info = new BiometricPrompt.PromptInfo.Builder()
+                .setTitle(getString(R.string.app_lock_prompt_title))
+                .setSubtitle(getString(R.string.app_lock_prompt_subtitle))
+                .setAllowedAuthenticators(LOCK_AUTHENTICATORS)
+                .build();
+        prompt.authenticate(info);
     }
 
     private void onDestinationChanged(

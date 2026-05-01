@@ -4,6 +4,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!--
+        App-launch unlock uses fingerprint/face when available, falling back to the
+        device PIN/pattern/password (DEVICE_CREDENTIAL). USE_BIOMETRIC covers both.
+    -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <application
         android:name=".FinMonApplication"

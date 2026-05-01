@@ -47,6 +47,18 @@ public final class BondsViewModel extends ViewModel {
     private final MutableLiveData<List<MaturedBond>> maturedBonds = new MutableLiveData<>();
     private final MutableLiveData<Boolean> maturedExpanded = new MutableLiveData<>(Boolean.FALSE);
     private final MutableLiveData<ExpectedPaymentsResult> expectedPayments = new MutableLiveData<>();
+    private final MutableLiveData<PaymentsLabel> paymentsLabel =
+            new MutableLiveData<>(PaymentsLabel.EXPECTED);
+
+    /**
+     * Drives the Expected Payments card title:
+     * <ul>
+     *   <li>{@link #EXPECTED} — window starts on/after today (future-only).</li>
+     *   <li>{@link #RECEIVED} — window ends on/before today (past-only).</li>
+     *   <li>{@link #RECEIVED_AND_EXPECTED} — window straddles today.</li>
+     * </ul>
+     */
+    public enum PaymentsLabel { EXPECTED, RECEIVED, RECEIVED_AND_EXPECTED }
 
     private final Observer<Currency> filterCurrencyObserver = c -> refresh();
     private final Observer<FilterPeriod> filterPeriodObserver = p -> refresh();
@@ -77,6 +89,7 @@ public final class BondsViewModel extends ViewModel {
     @NonNull public LiveData<List<MaturedBond>> maturedBonds() { return maturedBonds; }
     @NonNull public LiveData<Boolean> maturedExpanded() { return maturedExpanded; }
     @NonNull public LiveData<ExpectedPaymentsResult> expectedPayments() { return expectedPayments; }
+    @NonNull public LiveData<PaymentsLabel> paymentsLabel() { return paymentsLabel; }
     @NonNull public LiveData<Currency> filterCurrency() { return filter.selectedCurrency(); }
 
     public void toggleMaturedExpanded() {
@@ -87,10 +100,13 @@ public final class BondsViewModel extends ViewModel {
     public void refresh() {
         viewExecutor.execute(() -> {
             LocalDate today = LocalDate.now();
-            Window w = computeWindow(today);
+            Window holdingsWindow = computeHoldingsWindow(today);
+            Window paymentsWindow = computePaymentsWindow(today);
+            paymentsLabel.postValue(labelFor(paymentsWindow, today));
             Currency currency = filter.selectedCurrency().getValue();
             try {
-                List<WindowedHolding> all = repo.getWindowedHoldings(currency, w.from, w.to).get();
+                List<WindowedHolding> all = repo.getWindowedHoldings(
+                        currency, holdingsWindow.from, holdingsWindow.to).get();
                 List<WindowedHolding> bonds = new ArrayList<>();
                 for (WindowedHolding wh : all) {
                     if (wh.holding.asset.type == AssetType.BOND) bonds.add(wh);
@@ -105,15 +121,18 @@ public final class BondsViewModel extends ViewModel {
                 Log.w(TAG, "matured bonds refresh failed", e);
             }
             try {
-                expectedPayments.postValue(repo.getExpectedPayments(today, currency).get());
+                expectedPayments.postValue(repo.getBondPaymentsInWindow(
+                        paymentsWindow.from, paymentsWindow.to, today, currency).get());
             } catch (Exception e) {
-                Log.w(TAG, "expected payments refresh failed", e);
+                Log.w(TAG, "bond payments refresh failed", e);
             }
         });
     }
 
+    /** Window for the windowed-P&L holdings query — clamped at today since that
+     *  query is meaningful only up to the present. */
     @NonNull
-    private Window computeWindow(@NonNull LocalDate today) {
+    private Window computeHoldingsWindow(@NonNull LocalDate today) {
         FilterPeriod p = filter.selectedPeriod().getValue();
         CustomRange custom = filter.customRange().getValue();
         if (p == FilterPeriod.CUSTOM && custom != null) {
@@ -127,6 +146,35 @@ public final class BondsViewModel extends ViewModel {
         return new Window(from, today);
     }
 
+    /** Window for the bond payments query (Calendar tab + Expected Payments card).
+     *  Unlike holdings, this window can extend into the future — the user picks a
+     *  custom range that covers upcoming coupons (the "2026 to 2027" use case).
+     *
+     *  <p>ALL_TIME defaults to <b>future-only</b> so the card matches its label
+     *  ("Expected payments") and the totals stay comparable to the legacy view.
+     *  Past payments are reachable via past-anchored periods (1y, YTD, etc.) or a
+     *  Custom range covering past dates. */
+    @NonNull
+    private Window computePaymentsWindow(@NonNull LocalDate today) {
+        FilterPeriod p = filter.selectedPeriod().getValue();
+        CustomRange custom = filter.customRange().getValue();
+        if (p == FilterPeriod.CUSTOM && custom != null) {
+            // Honor the user's range as-is — both endpoints can be future.
+            return new Window(custom.from, custom.to);
+        }
+        FilterPeriod resolved = p != null ? p : FilterPeriod.ALL_TIME;
+        if (resolved == FilterPeriod.ALL_TIME) {
+            // Future-only: legacy "Expected payments" semantics. 30y forward covers
+            // the longest realistic bond schedule; NBU caps each bond at its own
+            // maturity so we don't actually project 30y of phantom payments.
+            return new Window(today, today.plusYears(30));
+        }
+        LocalDate from = resolved == FilterPeriod.CUSTOM
+                ? today.minusYears(1)
+                : resolved.windowStart(today);
+        return new Window(from, today);
+    }
+
     private static final class Window {
         @NonNull final LocalDate from;
         @NonNull final LocalDate to;
@@ -134,6 +182,16 @@ public final class BondsViewModel extends ViewModel {
             this.from = from;
             this.to = to;
         }
+    }
+
+    @NonNull
+    static PaymentsLabel labelFor(@NonNull Window window, @NonNull LocalDate today) {
+        // End on/before today → no future portion → "Received".
+        if (!window.to.isAfter(today)) return PaymentsLabel.RECEIVED;
+        // Start on/after today → no past portion → "Expected".
+        if (!window.from.isBefore(today)) return PaymentsLabel.EXPECTED;
+        // Straddles today → both sides contribute.
+        return PaymentsLabel.RECEIVED_AND_EXPECTED;
     }
 
     @NonNull

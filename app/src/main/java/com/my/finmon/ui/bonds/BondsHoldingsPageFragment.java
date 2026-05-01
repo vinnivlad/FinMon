@@ -17,6 +17,7 @@ import com.my.finmon.data.repository.PortfolioRepository.MaturedBond;
 import com.my.finmon.data.repository.PortfolioRepository.WindowedHolding;
 import com.my.finmon.databinding.FragmentBondsHoldingsBinding;
 import com.my.finmon.ui.portfolio.HoldingsAdapter;
+import com.my.finmon.ui.portfolio.PortfolioFragment;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -90,9 +91,15 @@ public class BondsHoldingsPageFragment extends Fragment {
             }
         }
 
+        // Newest-purchased first. Matches the Portfolio screen's sort key so the
+        // user gets consistent ordering across the two holdings views.
+        List<WindowedHolding> sortedActive = new ArrayList<>(active);
+        sortedActive.sort((a, b) -> PortfolioFragment.compareLatestPurchaseDesc(
+                a.holding.latestPurchaseAt, b.holding.latestPurchaseAt));
+
         List<HoldingsAdapter.Item> items = new ArrayList<>(
-                active.size() + 1 + visibleMatured.size());
-        for (WindowedHolding wh : active) items.add(new HoldingsAdapter.Item.Active(wh));
+                sortedActive.size() + 1 + visibleMatured.size());
+        for (WindowedHolding wh : sortedActive) items.add(new HoldingsAdapter.Item.Active(wh));
         if (!visibleMatured.isEmpty()) {
             items.add(new HoldingsAdapter.Item.MaturedHeader(visibleMatured.size(), expanded));
             if (expanded) {

@@ -28,7 +28,7 @@ import java.util.Map;
 /**
  * Dialog opened by tapping a payment-marker date on the Bonds → Calendar tab.
  * Lists every payment expected on that date (grouped per bond + type — lots of the
- * same bond are already combined upstream by {@code getExpectedPayments}) plus a
+ * same bond are already combined upstream by {@code getBondPaymentsInWindow}) plus a
  * per-currency total at the bottom.
  */
 final class DatePaymentsDialog {

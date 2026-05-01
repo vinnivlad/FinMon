@@ -53,6 +53,8 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
     private static final DecimalFormat PCT = buildFormat("+0.0'%';-0.0'%'");
     private static final DecimalFormat SIGNED_MONEY = buildFormat("+#,##0.00;-#,##0.00");
     private static final MathContext PCT_MC = new MathContext(4, RoundingMode.HALF_UP);
+    /** Per-unit average price uses more digits than PCT — display formatter trims to 2dp. */
+    private static final MathContext AVG_MC = new MathContext(12, RoundingMode.HALF_UP);
 
     @Nullable private Runnable onToggleMatured;
     @Nullable private java.util.function.Consumer<WindowedHolding> onActiveClick;
@@ -186,7 +188,19 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
             }
 
             if (h.openCostBasis != null) {
-                subValue.setText(QTY.format(h.quantity) + " · cost " + MONEY.format(h.openCostBasis));
+                StringBuilder sub = new StringBuilder()
+                        .append(QTY.format(h.quantity))
+                        .append(" · cost ")
+                        .append(MONEY.format(h.openCostBasis));
+                // Average unit cost across the asset's open lots — openCostBasis
+                // already sums (lot.qty × lot.unitPrice), so dividing by the open
+                // quantity gives a weighted average per unit. Skip when qty is zero
+                // (we shouldn't reach this branch then, but guard anyway).
+                if (h.quantity.signum() != 0) {
+                    BigDecimal avg = h.openCostBasis.divide(h.quantity, AVG_MC);
+                    sub.append(" · avg ").append(MONEY.format(avg));
+                }
+                subValue.setText(sub.toString());
                 subValue.setVisibility(View.VISIBLE);
             } else {
                 subValue.setVisibility(View.GONE);

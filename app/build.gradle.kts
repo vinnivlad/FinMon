@@ -88,6 +88,9 @@ dependencies {
     // Calendar (Bonds → Calendar tab)
     implementation("com.kizitonwose.calendar:view:2.5.4")
 
+    // Biometric / device-credential app lock
+    implementation("androidx.biometric:biometric:1.1.0")
+
     // Tests
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

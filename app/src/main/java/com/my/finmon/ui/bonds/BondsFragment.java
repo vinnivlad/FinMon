@@ -80,6 +80,26 @@ public class BondsFragment extends Fragment {
         tabMediator.attach();
 
         viewModel.expectedPayments().observe(getViewLifecycleOwner(), this::renderExpectedPayments);
+        viewModel.paymentsLabel().observe(getViewLifecycleOwner(), this::renderPaymentsLabel);
+    }
+
+    private void renderPaymentsLabel(
+            @Nullable BondsViewModel.PaymentsLabel label) {
+        if (binding == null || label == null) return;
+        int res;
+        switch (label) {
+            case RECEIVED:
+                res = R.string.bonds_received_payments_label;
+                break;
+            case RECEIVED_AND_EXPECTED:
+                res = R.string.bonds_received_and_expected_payments_label;
+                break;
+            case EXPECTED:
+            default:
+                res = R.string.bonds_expected_payments_label;
+                break;
+        }
+        binding.expectedPaymentsLabel.setText(res);
     }
 
     private void renderExpectedPayments(@Nullable ExpectedPaymentsResult r) {

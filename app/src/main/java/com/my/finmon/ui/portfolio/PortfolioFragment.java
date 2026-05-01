@@ -26,6 +26,7 @@ import com.my.finmon.ui.portfolio.PortfolioViewModel.TotalsCardData;
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -91,10 +92,17 @@ public class PortfolioFragment extends Fragment {
         // Cash piles are summarised in the cashBar above the list, so they don't
         // belong in the asset rows. Sort STOCK → BOND → (CASH never reaches the
         // adapter but keeps the comparator total). AssetType ordinal happens to
-        // match that order, so a plain ordinal compare does the job.
+        // match that order, so a plain ordinal compare does the job. Within each
+        // type, newest-purchased first — most-recent acquisition timestamp from
+        // the asset's open lots, descending.
         List<WindowedHolding> sorted = new ArrayList<>(active);
-        sorted.sort((a, b) -> Integer.compare(
-                a.holding.asset.type.ordinal(), b.holding.asset.type.ordinal()));
+        sorted.sort((a, b) -> {
+            int cmp = Integer.compare(
+                    a.holding.asset.type.ordinal(), b.holding.asset.type.ordinal());
+            if (cmp != 0) return cmp;
+            return compareLatestPurchaseDesc(
+                    a.holding.latestPurchaseAt, b.holding.latestPurchaseAt);
+        });
 
         List<HoldingsAdapter.Item> items = new ArrayList<>(sorted.size());
         for (WindowedHolding wh : sorted) {
@@ -200,5 +208,14 @@ public class PortfolioFragment extends Fragment {
         DecimalFormat f = new DecimalFormat(pattern, sym);
         f.setParseBigDecimal(true);
         return f;
+    }
+
+    /** Newest-first comparator with nulls sorted last (treated as oldest). */
+    public static int compareLatestPurchaseDesc(
+            @Nullable LocalDateTime a, @Nullable LocalDateTime b) {
+        if (a == null && b == null) return 0;
+        if (a == null) return 1;
+        if (b == null) return -1;
+        return b.compareTo(a);
     }
 }

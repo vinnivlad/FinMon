@@ -70,6 +70,8 @@
     <string name="bonds_tab_holdings">Holdings</string>
     <string name="bonds_tab_calendar">Calendar</string>
     <string name="bonds_expected_payments_label">Expected payments</string>
+    <string name="bonds_received_payments_label">Received payments</string>
+    <string name="bonds_received_and_expected_payments_label">Received &amp; Expected payments</string>
     <string name="bonds_expected_payments_placeholder">Coming soon</string>
     <string name="bonds_expected_payments_none">No upcoming bond payments.</string>
     <string name="bonds_expected_payments_fx_gap">(some FX missing)</string>
@@ -244,4 +246,11 @@
     <string name="stage_name_bond_coupons">Bond coupons</string>
     <string name="stage_name_snapshots">Computing snapshots</string>
     <string name="stage_name_other">Sync</string>
+
+    <!-- App-lock screen -->
+    <string name="app_lock_title">FinMon is locked</string>
+    <string name="app_lock_subtitle">Use fingerprint, face or your device PIN to unlock.</string>
+    <string name="app_lock_prompt_title">Unlock FinMon</string>
+    <string name="app_lock_prompt_subtitle">Confirm it\'s you to view portfolio data.</string>
+    <string name="app_lock_action_unlock">Unlock</string>
 </resources>

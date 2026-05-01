@@ -18,7 +18,9 @@ import com.my.finmon.ui.filter.FilterPeriod;
 import com.my.finmon.ui.filter.GlobalFilterViewModel.CustomRange;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
@@ -82,7 +84,11 @@ public final class CurrencyPageViewModel extends ViewModel {
                     to = today;
                 }
                 List<TradeRow> list = repo.getTradeRows(currency, from, to).get();
-                rows.postValue(list);
+                // Newest-purchased first. Repo emits ascending — flip here so the
+                // breakdown screen lines up with the holding-list sort order.
+                List<TradeRow> sorted = new ArrayList<>(list);
+                sorted.sort(Comparator.comparing((TradeRow r) -> r.purchasedAt).reversed());
+                rows.postValue(sorted);
             } catch (Exception e) {
                 Log.w(TAG, "row reload failed for " + currency, e);
             }

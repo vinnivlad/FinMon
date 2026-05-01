@@ -68,13 +68,17 @@ public final class GlobalFilterBinder {
         binding.globalPeriodChips.setOnCheckedStateChangeListener((group, checkedIds) -> {
             if (checkedIds.isEmpty()) return;
             int id = checkedIds.get(0);
-            if (id == R.id.globalPeriodChipCustom) {
-                openDateRangePicker();
-                return;
-            }
+            // Custom is handled by its own OnClickListener so re-tapping the chip
+            // when it's already selected still reopens the picker (the chip group
+            // suppresses state-change events for taps that don't change selection).
+            if (id == R.id.globalPeriodChipCustom) return;
             FilterPeriod p = periodFor(id);
             if (p != null) vm.setPeriod(p);
         });
+        // Always open the picker on any Custom tap — even if the chip is already
+        // checked. Solves the "I picked a range and want to pick a different one,
+        // but tapping Custom does nothing" UX trap.
+        binding.globalPeriodChipCustom.setOnClickListener(v -> openDateRangePicker());
     }
 
     private void observeViewModel(@NonNull LifecycleOwner owner) {

@@ -71,7 +71,7 @@ public final class PortfolioRepository {
     private final PortfolioValueDao portfolioValueDao;
     private final ExecutorService executor;
     private final TaxRates taxRates;
-    /** Optional — null in tests. {@link #getExpectedPayments} returns empty when null. */
+    /** Optional — null in tests. {@link #getBondPaymentsInWindow} skips the future leg when null. */
     @Nullable private final NbuClient nbuClient;
 
     public PortfolioRepository(
@@ -716,34 +716,46 @@ public final class PortfolioRepository {
     }
 
     /**
-     * Future-only coupon and maturity payments expected on every active bond. Used by
-     * the Bonds screen for the Expected Payments card and the Calendar's payment-date
-     * markers. {@code currencyFilter}, when non-null, narrows to that currency's bonds.
+     * Coupon and maturity payments touching the {@code [windowFrom, windowTo]} window,
+     * combining past payments (event log) with future projections (NBU schedule).
+     * Drives the Bonds screen's Expected Payments card and Calendar tab so they react
+     * to the global filter — including custom ranges that extend past today.
      *
-     * <p>For each bond with a non-blank ISIN, current open quantity, and no MATURITY
-     * event yet recorded:
+     * <p>Past portion ({@code windowFrom .. min(windowTo, today)}):
      * <ul>
-     *   <li>Coupons (NBU {@code pay_type=1}, future dates only) — amount per row is
-     *       {@code openQty × pay_val}, with {@link #applyTax} applied so the figure
-     *       matches what {@link #ingestBondCouponsSync} would actually credit on the
-     *       payment day.</li>
-     *   <li>Principal (NBU {@code pay_type=2}, future dates only) — amount is
-     *       {@code openQty × face} (face = {@code asset.bondInitialPrice}). Maturity
-     *       payouts aren't taxed.</li>
+     *   <li>DIVIDEND events with {@code incomeSourceAssetId = bondId} (coupons paid).</li>
+     *   <li>The bond's MATURITY event if its date sits in the window.</li>
      * </ul>
+     * Each past row carries {@code paid = true}.
      *
-     * <p>{@link ExpectedPaymentsResult#totalsByCurrency} groups amounts by native
-     * currency; {@link ExpectedPaymentsResult#totalInBase} converts each row to
-     * {@link #BASE_CURRENCY} via FX on {@code asOf} (good-enough proxy — actual FX
-     * on the future payment date is unknowable). {@code hasFxGaps} flags rows whose
-     * base conversion failed for lack of an FX row.
+     * <p>Future portion ({@code max(windowFrom, today + 1) .. windowTo}):
+     * <ul>
+     *   <li>NBU schedule {@code pay_type=1} → coupon, amount = {@code openQty × pay_val}
+     *       with {@link #applyTax} applied so the figure matches what
+     *       {@link #ingestBondCouponsSync} would credit on the payment day.</li>
+     *   <li>NBU schedule {@code pay_type=2} → principal, amount = {@code openQty × face}
+     *       (face = {@code asset.bondInitialPrice}). Maturity payouts aren't taxed.</li>
+     * </ul>
+     * Active bonds only — those with a recorded MATURITY skip the future leg. Each
+     * future row carries {@code paid = false}.
      *
-     * <p>Returns an empty result if {@link #nbuClient} is null (e.g. unit-test fixture).
+     * <p>{@code currencyFilter}, when non-null, narrows to that currency's bonds.
+     * {@code totalInBase} converts each row to {@link #BASE_CURRENCY} via FX on the
+     * row's date (good-enough for past — exact for paid; for future the date itself
+     * is in the future so we use {@code today}'s rate as the available proxy).
+     * {@code hasFxGaps} flags rows whose base conversion failed for lack of an FX row.
+     *
+     * <p>Returns an empty future-side result if {@link #nbuClient} is null (e.g. unit
+     * tests), but past-payment rows still come back from the event log.
      */
     @NonNull
-    public Future<ExpectedPaymentsResult> getExpectedPayments(
-            @NonNull LocalDate asOf, @Nullable Currency currencyFilter) {
-        return executor.submit(() -> computeExpectedPaymentsSync(asOf, currencyFilter));
+    public Future<ExpectedPaymentsResult> getBondPaymentsInWindow(
+            @NonNull LocalDate windowFrom,
+            @NonNull LocalDate windowTo,
+            @NonNull LocalDate today,
+            @Nullable Currency currencyFilter) {
+        return executor.submit(() -> computeBondPaymentsInWindowSync(
+                windowFrom, windowTo, today, currencyFilter));
     }
 
     /**
@@ -829,28 +841,50 @@ public final class PortfolioRepository {
         return new BondTimeline(bond, entries);
     }
 
-    private ExpectedPaymentsResult computeExpectedPaymentsSync(
-            @NonNull LocalDate asOf, @Nullable Currency currencyFilter) {
-        List<ExpectedPayment> rows = new ArrayList<>();
-        Map<Currency, BigDecimal> totalsByCurrency = new EnumMap<>(Currency.class);
-        Map<Currency, BigDecimal> totalsByDisplayCurrency = new EnumMap<>(Currency.class);
-        for (Currency c : Currency.values()) totalsByDisplayCurrency.put(c, BigDecimal.ZERO);
-        BigDecimal totalInBase = BigDecimal.ZERO;
-        boolean hasFxGaps = false;
+    private ExpectedPaymentsResult computeBondPaymentsInWindowSync(
+            @NonNull LocalDate windowFrom,
+            @NonNull LocalDate windowTo,
+            @NonNull LocalDate today,
+            @Nullable Currency currencyFilter) {
+        BondPaymentsAccumulator acc = new BondPaymentsAccumulator();
 
-        if (nbuClient == null) {
-            return new ExpectedPaymentsResult(
-                    rows, totalsByCurrency, totalsByDisplayCurrency,
-                    totalInBase, BASE_CURRENCY, hasFxGaps);
-        }
+        // Past portion: window clamped at today (inclusive). hasPast is false when
+        // the whole window sits in the future (e.g. custom 2027..2028).
+        LocalDate pastUpTo = windowTo.isBefore(today) ? windowTo : today;
+        boolean hasPast = !pastUpTo.isBefore(windowFrom);
+        // Future portion: starts the day after today and ends at windowTo. hasFuture
+        // is false when the window ends on or before today (purely past view).
+        boolean hasFuture = windowTo.isAfter(today);
 
-        LocalDateTime upTo = endOfDay(asOf);
         for (AssetEntity asset : assetDao.findByType(AssetType.BOND)) {
-            if (asset.isin == null || asset.isin.isBlank()) continue;
             if (currencyFilter != null && asset.currency != currencyFilter) continue;
+
+            // ── Past payments from the event log ──────────────────────────
+            if (hasPast) {
+                LocalDateTime pastUpToLdt = endOfDay(pastUpTo);
+                for (EventEntity ev : eventDao.getIncomeFromAssetAsOf(asset.id, pastUpToLdt)) {
+                    LocalDate d = ev.timestamp.toLocalDate();
+                    if (d.isBefore(windowFrom) || d.isAfter(pastUpTo)) continue;
+                    acc.add(asset, d, ev.amount, EventType.DIVIDEND, /* paid */ true, d);
+                }
+                EventEntity maturity = eventDao.findMaturityForAsset(asset.id);
+                if (maturity != null) {
+                    LocalDate d = maturity.timestamp.toLocalDate();
+                    if (!d.isBefore(windowFrom) && !d.isAfter(pastUpTo)) {
+                        acc.add(asset, d, maturity.amount, EventType.MATURITY, /* paid */ true, d);
+                    }
+                }
+            }
+
+            // ── Future projections from NBU schedule ──────────────────────
+            // Skip when there's no future to project, when NBU isn't wired (tests),
+            // when the bond has no ISIN, or when it's already redeemed.
+            if (!hasFuture) continue;
+            if (nbuClient == null) continue;
+            if (asset.isin == null || asset.isin.isBlank()) continue;
             if (eventDao.findMaturityForAsset(asset.id) != null) continue;
 
-            List<EventEntity> events = eventDao.getByAssetAsOf(asset.id, upTo);
+            List<EventEntity> events = eventDao.getByAssetAsOf(asset.id, endOfDay(today));
             FifoResult fifo = computeFifo(events);
             BigDecimal openQty = fifo.openQty;
             if (openQty.signum() <= 0) continue;
@@ -865,7 +899,6 @@ public final class PortfolioRepository {
             if (dto == null || dto.payments == null) continue;
 
             BigDecimal taxRate = effectiveTaxRatePct(asset);
-
             for (NbuBondDto.Payment p : dto.payments) {
                 if (p == null || p.pay_date == null) continue;
                 LocalDate d;
@@ -874,7 +907,9 @@ public final class PortfolioRepository {
                 } catch (Exception ex) {
                     continue;
                 }
-                if (d.isBefore(asOf)) continue;  // past — already paid (or missed)
+                // Strictly future, and inside the window.
+                if (!d.isAfter(today)) continue;
+                if (d.isBefore(windowFrom) || d.isAfter(windowTo)) continue;
 
                 BigDecimal amount;
                 EventType type;
@@ -891,39 +926,74 @@ public final class PortfolioRepository {
                     continue;
                 }
 
-                rows.add(new ExpectedPayment(
-                        asset.id, asset.ticker, asset.currency, d, amount, type));
-
-                totalsByCurrency.merge(asset.currency, amount, BigDecimal::add);
-
-                // Cross-currency totals: same amount expressed in each display
-                // currency. Empty FX → flagged via hasFxGaps; rows that can't
-                // convert just don't contribute to the affected display total.
-                for (Currency display : Currency.values()) {
-                    BigDecimal inDisplay = (display == asset.currency)
-                            ? amount
-                            : convert(amount, asset.currency, display, asOf);
-                    if (inDisplay == null) {
-                        hasFxGaps = true;
-                    } else {
-                        totalsByDisplayCurrency.merge(display, inDisplay, BigDecimal::add);
-                    }
-                }
-
-                BigDecimal inBase = convert(amount, asset.currency, BASE_CURRENCY, asOf);
-                if (inBase == null) {
-                    hasFxGaps = true;
-                } else {
-                    totalInBase = totalInBase.add(inBase);
-                }
+                // Future FX is unknowable — fall back to today's rate as the proxy
+                // (same convention the previous future-only path used).
+                acc.add(asset, d, amount, type, /* paid */ false, today);
             }
         }
 
-        rows.sort(Comparator.comparing((ExpectedPayment ep) -> ep.date)
-                .thenComparing(ep -> ep.ticker));
-        return new ExpectedPaymentsResult(
-                rows, totalsByCurrency, totalsByDisplayCurrency,
-                totalInBase, BASE_CURRENCY, hasFxGaps);
+        return acc.build();
+    }
+
+    /**
+     * Accumulates bond payment rows + the four cross-cuts the UI needs from
+     * {@link ExpectedPaymentsResult}: per-native-currency, per-display-currency
+     * (for the equivalents ribbon), and the BASE_CURRENCY rollup, alongside an
+     * fx-gap flag. Local helper to keep
+     * {@link #computeBondPaymentsInWindowSync} flat and readable.
+     */
+    private final class BondPaymentsAccumulator {
+        final List<ExpectedPayment> rows = new ArrayList<>();
+        final Map<Currency, BigDecimal> totalsByCurrency = new EnumMap<>(Currency.class);
+        final Map<Currency, BigDecimal> totalsByDisplayCurrency = new EnumMap<>(Currency.class);
+        BigDecimal totalInBase = BigDecimal.ZERO;
+        boolean hasFxGaps = false;
+
+        BondPaymentsAccumulator() {
+            for (Currency c : Currency.values()) {
+                totalsByDisplayCurrency.put(c, BigDecimal.ZERO);
+            }
+        }
+
+        /** {@code fxOn} is the FX-rate date — actual payment date for paid rows,
+         *  today for projections (tomorrow's rates aren't knowable). */
+        void add(
+                @NonNull AssetEntity asset,
+                @NonNull LocalDate date,
+                @NonNull BigDecimal amount,
+                @NonNull EventType type,
+                boolean paid,
+                @NonNull LocalDate fxOn) {
+            rows.add(new ExpectedPayment(
+                    asset.id, asset.ticker, asset.currency, date, amount, type, paid));
+            totalsByCurrency.merge(asset.currency, amount, BigDecimal::add);
+
+            for (Currency display : Currency.values()) {
+                BigDecimal inDisplay = (display == asset.currency)
+                        ? amount
+                        : convert(amount, asset.currency, display, fxOn);
+                if (inDisplay == null) {
+                    hasFxGaps = true;
+                } else {
+                    totalsByDisplayCurrency.merge(display, inDisplay, BigDecimal::add);
+                }
+            }
+            BigDecimal inBase = convert(amount, asset.currency, BASE_CURRENCY, fxOn);
+            if (inBase == null) {
+                hasFxGaps = true;
+            } else {
+                totalInBase = totalInBase.add(inBase);
+            }
+        }
+
+        @NonNull
+        ExpectedPaymentsResult build() {
+            rows.sort(Comparator.comparing((ExpectedPayment ep) -> ep.date)
+                    .thenComparing(ep -> ep.ticker));
+            return new ExpectedPaymentsResult(
+                    rows, totalsByCurrency, totalsByDisplayCurrency,
+                    totalInBase, BASE_CURRENCY, hasFxGaps);
+        }
     }
 
     /**
@@ -1775,7 +1845,7 @@ public final class PortfolioRepository {
             if (asset.type == AssetType.CASH) {
                 BigDecimal balance = sumCashNet(events);
                 // Cash is always worth its face — market value = quantity.
-                holdings.add(new Holding(asset, balance, null, balance, null, null));
+                holdings.add(new Holding(asset, balance, null, balance, null, null, null));
             } else {
                 FifoResult fifo = computeFifo(events);
                 if (fifo.openQty.signum() == 0) continue;
@@ -1785,8 +1855,15 @@ public final class PortfolioRepository {
                 for (EventEntity inc : eventDao.getIncomeFromAssetAsOf(asset.id, upTo)) {
                     dividends = dividends.add(inc.amount);
                 }
+                LocalDateTime latestPurchaseAt = null;
+                for (OpenLot lot : fifo.openLots) {
+                    if (latestPurchaseAt == null || lot.acquiredAt.isAfter(latestPurchaseAt)) {
+                        latestPurchaseAt = lot.acquiredAt;
+                    }
+                }
                 holdings.add(new Holding(
-                        asset, fifo.openQty, fifo.openCostBasis, marketValue, dividends, realized));
+                        asset, fifo.openQty, fifo.openCostBasis, marketValue,
+                        dividends, realized, latestPurchaseAt));
             }
         }
         return holdings;
@@ -2065,6 +2142,11 @@ public final class PortfolioRepository {
          * no sells have happened yet (most active holdings).
          */
         @Nullable public final BigDecimal lifetimeRealizedPnl;
+        /**
+         * Most recent acquisition timestamp across the asset's open lots — used by
+         * the holdings list to sort newest-purchased first. Null for CASH (no lots).
+         */
+        @Nullable public final LocalDateTime latestPurchaseAt;
 
         public Holding(
                 @NonNull AssetEntity asset,
@@ -2072,13 +2154,15 @@ public final class PortfolioRepository {
                 @Nullable BigDecimal openCostBasis,
                 @Nullable BigDecimal marketValue,
                 @Nullable BigDecimal lifetimeDividends,
-                @Nullable BigDecimal lifetimeRealizedPnl) {
+                @Nullable BigDecimal lifetimeRealizedPnl,
+                @Nullable LocalDateTime latestPurchaseAt) {
             this.asset = asset;
             this.quantity = quantity;
             this.openCostBasis = openCostBasis;
             this.marketValue = marketValue;
             this.lifetimeDividends = lifetimeDividends;
             this.lifetimeRealizedPnl = lifetimeRealizedPnl;
+            this.latestPurchaseAt = latestPurchaseAt;
         }
     }
 
@@ -2124,6 +2208,9 @@ public final class PortfolioRepository {
         @NonNull public final BigDecimal amount;
         /** Either {@link EventType#DIVIDEND} (coupon) or {@link EventType#MATURITY}. */
         @NonNull public final EventType type;
+        /** True for past payments already booked to the event log; false for future
+         *  projections from the NBU schedule. */
+        public final boolean paid;
 
         public ExpectedPayment(
                 long bondAssetId,
@@ -2131,13 +2218,15 @@ public final class PortfolioRepository {
                 @NonNull Currency currency,
                 @NonNull LocalDate date,
                 @NonNull BigDecimal amount,
-                @NonNull EventType type) {
+                @NonNull EventType type,
+                boolean paid) {
             this.bondAssetId = bondAssetId;
             this.ticker = ticker;
             this.currency = currency;
             this.date = date;
             this.amount = amount;
             this.type = type;
+            this.paid = paid;
         }
     }
 
