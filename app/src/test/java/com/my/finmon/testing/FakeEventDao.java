@@ -128,6 +128,17 @@ public final class FakeEventDao extends EventDao {
     }
 
     @Override
+    public LocalDateTime findLatestDividendTimestamp(long sourceAssetId) {
+        LocalDateTime max = null;
+        for (EventEntity e : rows) {
+            if (e.type != EventType.DIVIDEND) continue;
+            if (e.incomeSourceAssetId == null || e.incomeSourceAssetId != sourceAssetId) continue;
+            if (max == null || e.timestamp.isAfter(max)) max = e.timestamp;
+        }
+        return max;
+    }
+
+    @Override
     public List<Long> findMaturedBondIds() {
         Set<Long> ids = new LinkedHashSet<>();
         for (EventEntity e : rows) {
