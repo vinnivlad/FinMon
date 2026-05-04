@@ -31,7 +31,7 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:paddingHorizontal="@dimen/fm_page_padding_h"
-            android:paddingVertical="6dp" />
+            android:paddingVertical="3dp" />
 
         <View
             android:layout_width="match_parent"

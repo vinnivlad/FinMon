@@ -26,6 +26,11 @@
     <color name="fm_pnl_up">#5BC97A</color>
     <color name="fm_pnl_down">#FF6B6B</color>
 
+    <!-- Bottom-nav item state colors (idle / selected) — dark-mode equivalents of
+         the light-mode #A7A49C / #6F6A60 pair. -->
+    <color name="fm_nav_inactive">#7A8290</color>
+    <color name="fm_nav_active">#E6E8EC</color>
+
     <!-- Filter chips — invert in dark -->
     <color name="fm_chip_bg_selected">#E6E8EC</color>
     <color name="fm_chip_text_selected">#101216</color>

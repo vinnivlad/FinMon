@@ -189,10 +189,22 @@ public class MainActivity extends AppCompatActivity {
 
     private void showLockOverlay() {
         binding.lockOverlay.setVisibility(View.VISIBLE);
+        // Bottom nav / masthead / filter have default Material elevation that bleeds
+        // through the overlay z-order — hide them explicitly while locked, mirroring
+        // the startupOverlay pattern in renderStartupStatus().
+        binding.bottomNav.setVisibility(View.GONE);
+        binding.masthead.getRoot().setVisibility(View.GONE);
+        binding.globalFilter.getRoot().setVisibility(View.GONE);
     }
 
     private void hideLockOverlay() {
         binding.lockOverlay.setVisibility(View.GONE);
+        binding.bottomNav.setVisibility(View.VISIBLE);
+        binding.masthead.getRoot().setVisibility(View.VISIBLE);
+        // Filter visibility follows FILTER_DESTINATIONS — masthead is always on.
+        NavDestination dest = navController != null ? navController.getCurrentDestination() : null;
+        boolean filterShouldShow = dest != null && FILTER_DESTINATIONS.contains(dest.getId());
+        binding.globalFilter.getRoot().setVisibility(filterShouldShow ? View.VISIBLE : View.GONE);
     }
 
     private void promptUnlock() {

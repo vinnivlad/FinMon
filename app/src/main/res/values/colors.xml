@@ -26,6 +26,10 @@
     <color name="fm_pnl_up">#1B873F</color>
     <color name="fm_pnl_down">#C62828</color>
 
+    <!-- Bottom-nav item state colors (idle / selected) -->
+    <color name="fm_nav_inactive">#A7A49C</color>
+    <color name="fm_nav_active">#6F6A60</color>
+
     <!-- Filter chips -->
     <color name="fm_chip_bg_selected">#1A1814</color>
     <color name="fm_chip_text_selected">#FBF9F4</color>

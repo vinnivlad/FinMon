@@ -41,6 +41,8 @@
         <item name="chipBackgroundColor">@color/fm_chip_bg</item>
         <item name="chipStrokeColor">@color/fm_chip_stroke</item>
         <item name="chipStrokeWidth">@dimen/fm_rule_hairline</item>
+        <item name="chipMinHeight">28dp</item>
+        <item name="ensureMinTouchTargetSize">false</item>
         <item name="android:textColor">@color/fm_chip_text</item>
         <item name="checkedIconTint">@color/fm_chip_text</item>
         <item name="android:textAppearance">@style/TextAppearance.FinMon.Chip</item>
@@ -159,7 +161,7 @@
         the Save button); the range band uses the soft beige rule colour; surface
         sits on bg_raised so the dialog reads as a card on the cream activity.
     -->
-    <style name="ThemeOverlay.FinMon.DatePicker" parent="ThemeOverlay.Material3.MaterialCalendar">
+    <style name="ThemeOverlay.FinMon.DatePicker" parent="ThemeOverlay.Material3.MaterialCalendar.Fullscreen">
         <item name="colorPrimary">@color/fm_ink</item>
         <item name="colorOnPrimary">@color/fm_bg</item>
         <item name="colorPrimaryContainer">@color/fm_rule</item>
@@ -195,6 +197,16 @@
             on its own.
         -->
         <item name="elevationOverlayEnabled">false</item>
+
+        <!--
+            Fullscreen variant pulls Widget.Material3.MaterialCalendar.Fullscreen,
+            whose android:windowBackground points at a Material dynamic neutral
+            colour — that derives from the dynamic palette and falls back to purple
+            when colorPrimary is overridden without supplying a palette. Pinning
+            windowBackground to fm_bg_raised neutralises the wash for the fullscreen
+            range picker (same trick as the surfaceContainer* overrides above).
+        -->
+        <item name="android:windowBackground">@color/fm_bg_raised</item>
     </style>
 
     <!-- ========== Alert dialogs (BondDetail, DatePayments, etc.) ========== -->
@@ -264,10 +276,13 @@
     -->
     <style name="Widget.FinMon.BottomNavigationView" parent="Widget.Material3.BottomNavigationView">
         <item name="android:background">@drawable/bg_fm_bottom_nav</item>
+        <item name="android:minHeight">56dp</item>
         <item name="itemActiveIndicatorStyle">@style/Widget.FinMon.BottomNavigationView.ActiveIndicator</item>
         <item name="itemTextColor">@color/fm_nav_item_color</item>
         <item name="itemIconTint">@color/fm_nav_item_color</item>
         <item name="itemTextAppearanceActive">@style/TextAppearance.FinMon.Label.Small</item>
         <item name="itemTextAppearanceInactive">@style/TextAppearance.FinMon.Label.Small</item>
+        <item name="itemPaddingTop">6dp</item>
+        <item name="itemPaddingBottom">6dp</item>
     </style>
 </resources>

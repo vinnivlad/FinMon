@@ -92,6 +92,6 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="@dimen/fm_rule_strong"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="3dp"
         android:background="?attr/colorOutline" />
 </LinearLayout>

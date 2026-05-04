@@ -22,8 +22,8 @@
         android:orientation="horizontal"
         android:baselineAligned="true"
         android:paddingHorizontal="@dimen/fm_page_padding_h"
-        android:paddingTop="8dp"
-        android:paddingBottom="4dp">
+        android:paddingTop="4dp"
+        android:paddingBottom="2dp">
 
         <TextView
             android:id="@+id/monthHeaderText"
