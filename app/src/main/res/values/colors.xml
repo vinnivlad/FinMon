@@ -55,7 +55,4 @@
     <color name="pnl_positive">#1B873F</color>
     <color name="pnl_negative">#C62828</color>
     <color name="pnl_neutral">#8A8478</color>
-
-    <!-- Launcher (mode-independent — keep accent for both) -->
-    <color name="ic_launcher_background">#00687A</color>
 </resources>
