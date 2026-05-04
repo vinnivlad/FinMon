@@ -177,7 +177,7 @@ public final class GrowthChartViewModel extends ViewModel {
                     BigDecimal pct = pnl.subtract(baselinePnl)
                             .divide(denom, MathContext.DECIMAL64)
                             .multiply(HUNDRED);
-                    points.add(new Point(r.date, pct));
+                    points.add(new Point(r.date, pct, r.value, r.invested));
                 }
                 data.postValue(new GrowthData(outCurrency, points, anyGaps));
             } catch (Exception e) {
@@ -245,11 +245,22 @@ public final class GrowthChartViewModel extends ViewModel {
 
     public static final class Point {
         @NonNull public final LocalDate date;
+        /** Cumulative growth percent at this date, anchored at 0 % at window-start. */
         @NonNull public final BigDecimal pct;
+        /** Raw NAV at this date — used by the page to compute monthly P&amp;L deltas
+         *  for the "best &amp; worst months" list. Not used by the chart. */
+        @NonNull public final BigDecimal value;
+        @NonNull public final BigDecimal invested;
 
-        public Point(@NonNull LocalDate date, @NonNull BigDecimal pct) {
+        public Point(
+                @NonNull LocalDate date,
+                @NonNull BigDecimal pct,
+                @NonNull BigDecimal value,
+                @NonNull BigDecimal invested) {
             this.date = date;
             this.pct = pct;
+            this.value = value;
+            this.invested = invested;
         }
     }
 }

@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Add Trade (editorial). Three modes (BUY / SELL / CONVERT) gate which field
+    group is visible. All fields use editorial outlined-box style; Save is the
+    full-width ink-fill editorial Save. Empty-assets hint reads as italic body.
+    No page title — masthead carries it.
+-->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -9,34 +15,29 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/add_trade_title"
-            android:textAppearance="?attr/textAppearanceHeadlineSmall"
-            android:paddingBottom="16dp" />
+        android:paddingHorizontal="@dimen/fm_page_padding_h"
+        android:paddingTop="12dp"
+        android:paddingBottom="32dp">
 
         <TextView
             android:id="@+id/emptyAssetsHint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/trade_no_assets"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:alpha="0.7"
-            android:padding="16dp"
+            android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+            android:textSize="13sp"
+            android:paddingVertical="12dp"
             android:visibility="gone" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/sideLayout"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+            style="@style/Widget.FinMon.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
             android:hint="@string/field_side">
 
-            <AutoCompleteTextView
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
                 android:id="@+id/side"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -52,12 +53,13 @@
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/assetLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
                 android:hint="@string/field_asset"
-                app:helperText="@string/field_asset_hint">
+                app:helperText="@string/field_asset_hint"
+                app:helperTextEnabled="true">
 
                 <com.google.android.material.textfield.MaterialAutoCompleteTextView
                     android:id="@+id/asset"
@@ -69,7 +71,7 @@
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/quantityLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
@@ -85,7 +87,7 @@
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/priceLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
@@ -112,13 +114,13 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/field_conversion_help"
-                android:textAppearance="?attr/textAppearanceBodySmall"
-                android:alpha="0.7"
+                android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+                android:textSize="12sp"
                 android:layout_marginBottom="8dp" />
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/fromCurrencyLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
@@ -133,7 +135,7 @@
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/fromAmountLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
@@ -149,7 +151,7 @@
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/toCurrencyLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
@@ -164,7 +166,7 @@
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/toAmountLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
@@ -181,10 +183,9 @@
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/tradeDateLayout"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
             android:hint="@string/field_trade_date">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -198,9 +199,10 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/saveButton"
+            style="@style/Widget.FinMon.Button.Save"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="20dp"
             android:text="@string/action_save" />
     </LinearLayout>
 </ScrollView>

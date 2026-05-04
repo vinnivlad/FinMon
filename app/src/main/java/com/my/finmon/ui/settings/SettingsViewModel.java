@@ -3,12 +3,14 @@ package com.my.finmon.ui.settings;
 import android.content.Context;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatDelegate;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.my.finmon.ServiceLocator;
 import com.my.finmon.data.model.Currency;
+import com.my.finmon.prefs.ThemeMode;
 import com.my.finmon.prefs.UserPreferences;
 
 import java.math.BigDecimal;
@@ -50,6 +52,21 @@ public final class SettingsViewModel extends ViewModel {
 
     public void setDefaultBondTaxPct(@NonNull BigDecimal pct) {
         prefs.setDefaultBondTaxPct(pct);
+    }
+
+    @NonNull
+    public LiveData<ThemeMode> themeMode() {
+        return prefs.themeMode();
+    }
+
+    /**
+     * Persists the choice and applies it process-wide. {@link AppCompatDelegate} recreates
+     * any visible activity so the new theme inflates immediately — that's the expected
+     * UX, no extra wiring needed on caller side.
+     */
+    public void setThemeMode(@NonNull ThemeMode mode) {
+        prefs.setThemeMode(mode);
+        AppCompatDelegate.setDefaultNightMode(mode.delegateMode());
     }
 
     @NonNull

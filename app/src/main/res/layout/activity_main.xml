@@ -7,6 +7,20 @@
     android:layout_height="match_parent">
 
     <!--
+        Activity-scoped editorial masthead. Always visible across all destinations;
+        the title is set per-destination from MainActivity. The gear icon is the
+        single entry point to Settings.
+    -->
+    <include
+        android:id="@+id/masthead"
+        layout="@layout/view_masthead"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!--
         Activity-scoped global filter. Visibility is driven by MainActivity from a
         NavController.OnDestinationChangedListener — visible on Portfolio, Breakdown,
         Chart (and later Bonds), hidden on Market, Settings, and modal sub-screens.
@@ -16,7 +30,7 @@
         layout="@layout/view_global_filter"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/masthead"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 

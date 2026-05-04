@@ -1,55 +1,91 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<!--
+    Editorial trade-row — three rows:
+      1. Ticker (serif 16/600) ←→ window total P&L (Mono 14/600 colored) + ccy kicker
+      2. Kind kicker · date · qty @ avg (left, Inter caps + Mono small)
+      3. Realized · Unrealized · Dividends breakdown (right-aligned, Mono 9 muted)
+
+    Padding 8dp v × 16dp h. Hairline divider drawn by DividerItemDecoration.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingHorizontal="16dp"
-    android:paddingVertical="10dp">
+    android:orientation="vertical"
+    android:paddingHorizontal="@dimen/fm_row_padding_h"
+    android:paddingVertical="8dp">
 
-    <TextView
-        android:id="@+id/tickerLine"
-        android:layout_width="0dp"
+    <!-- Row 1: ticker + kind | total P&L + ccy kicker -->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textAppearance="?attr/textAppearanceBodyLarge"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/totalPnl"
-        tools:text="VOO · STOCK" />
+        android:orientation="horizontal"
+        android:baselineAligned="true">
 
-    <TextView
-        android:id="@+id/totalPnl"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:textAppearance="?attr/textAppearanceBodyLarge"
-        app:layout_constraintTop_toTopOf="@id/tickerLine"
-        app:layout_constraintEnd_toEndOf="parent"
-        tools:text="+1,234.56"
-        tools:textColor="@color/pnl_positive" />
+        <TextView
+            android:id="@+id/ticker"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.FinMon.Title.Medium"
+            android:textFontWeight="600"
+            android:singleLine="true"
+            android:ellipsize="end"
+            tools:text="VOO" />
 
+        <TextView
+            android:id="@+id/kindKicker"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+            android:singleLine="true"
+            android:ellipsize="end"
+            tools:text="· STOCK" />
+
+        <!-- value + currency suffix on same baseline -->
+        <TextView
+            android:id="@+id/totalPnl"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+            tools:text="+2,857.65"
+            tools:textColor="@color/pnl_positive" />
+
+        <TextView
+            android:id="@+id/totalPnlCcy"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+            android:layout_marginStart="5dp"
+            tools:text="USD" />
+    </LinearLayout>
+
+    <!-- Row 2: date · qty @ avg · holding (Inter+Mono caps mute small) -->
     <TextView
         android:id="@+id/qtyLine"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textAppearance="?attr/textAppearanceBodySmall"
-        android:alpha="0.75"
-        android:paddingTop="2dp"
-        app:layout_constraintTop_toBottomOf="@id/tickerLine"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        tools:text="2026-03-10 · 10 @ 500.00 · holding 10" />
+        android:textAppearance="@style/TextAppearance.FinMon.Label.Small"
+        android:textColor="@color/fm_ink_mute"
+        android:textSize="10sp"
+        android:singleLine="true"
+        android:ellipsize="end"
+        android:layout_marginTop="2dp"
+        tools:text="2025-08-14 · 78 @ 481.95 · holding 78" />
 
+    <!-- Row 3: breakdown line (right-aligned mono) -->
     <TextView
         android:id="@+id/breakdownLine"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textAppearance="?attr/textAppearanceBodySmall"
-        android:alpha="0.75"
-        android:paddingTop="2dp"
-        app:layout_constraintTop_toBottomOf="@id/qtyLine"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        tools:text="Realized +200 · Unrealized +1,034.56" />
+        android:textAppearance="@style/TextAppearance.FinMon.Mono.Small"
+        android:textSize="9sp"
+        android:textColor="@color/fm_ink_mute"
+        android:gravity="end"
+        android:layout_marginTop="2dp"
+        android:singleLine="true"
+        android:ellipsize="end"
+        tools:text="Realized +0.00 · Unrealized +2,616.12 · Dividends +241.53" />
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+</LinearLayout>

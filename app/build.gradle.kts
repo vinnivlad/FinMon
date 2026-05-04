@@ -63,6 +63,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel:2.8.7")
     implementation("androidx.lifecycle:lifecycle-livedata:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-process:2.8.7")
 
     // Navigation Component (single-Activity + Fragments)
     implementation("androidx.navigation:navigation-fragment:2.8.4")

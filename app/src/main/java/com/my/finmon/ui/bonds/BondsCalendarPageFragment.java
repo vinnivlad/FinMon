@@ -12,6 +12,8 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
+import androidx.core.content.ContextCompat;
+
 import com.kizitonwose.calendar.core.CalendarDay;
 import com.kizitonwose.calendar.core.CalendarMonth;
 import com.kizitonwose.calendar.core.DayPosition;
@@ -103,7 +105,11 @@ public class BondsCalendarPageFragment extends Fragment {
             t.setLayoutParams(lp);
             t.setGravity(android.view.Gravity.CENTER);
             t.setText(dow.getDisplayName(TextStyle.NARROW, Locale.getDefault()));
-            t.setAlpha(0.7f);
+            // Editorial Kicker: Inter 9/600 caps, ink_mute. Letter-spacing comes
+            // from the style. Letters are already a single character so caps is
+            // a visual no-op here; the style still nails type/color/spacing.
+            androidx.core.widget.TextViewCompat.setTextAppearance(
+                    t, R.style.TextAppearance_FinMon_Kicker);
             legend.addView(t);
         }
     }
@@ -133,7 +139,7 @@ public class BondsCalendarPageFragment extends Fragment {
                     @Override
                     public void bind(@NonNull MonthHeaderContainer container,
                                      @NonNull CalendarMonth month) {
-                        container.bind(month);
+                        container.bind(month, countEventsIn(month.getYearMonth()));
                     }
                 });
 
@@ -196,25 +202,19 @@ public class BondsCalendarPageFragment extends Fragment {
             // without losing the day number entirely.
             dayBinding.dayText.setAlpha(inMonth ? 1f : 0.3f);
 
-            // Background: today gets the outlined oval (matches MaterialDatePicker's
-            // today indicator). No "selected" state currently — only payment days are
-            // interactive, and they open a dialog rather than persist a selection.
-            int textColor = isToday
-                    ? com.google.android.material.color.MaterialColors.getColor(
-                            dayBinding.dayText,
-                            com.google.android.material.R.attr.colorPrimary)
-                    : com.google.android.material.color.MaterialColors.getColor(
-                            dayBinding.dayText,
-                            com.google.android.material.R.attr.colorOnSurface);
+            // Today gets the outlined-oval today ring (matches MaterialDatePicker).
+            // Day text stays editorial ink in both states — the ring alone signals
+            // "today", no extra color treatment needed against cream.
             dayBinding.dayBackground.setBackgroundResource(
                     isToday ? R.drawable.calendar_day_today : R.drawable.calendar_day_bg);
-            dayBinding.dayText.setTextColor(textColor);
+            dayBinding.dayText.setTextColor(
+                    ContextCompat.getColor(requireContext(), R.color.fm_ink));
 
             dayBinding.dayMarker.setVisibility(hasPayment ? View.VISIBLE : View.GONE);
         }
     }
 
-    static final class MonthHeaderContainer extends ViewContainer {
+    final class MonthHeaderContainer extends ViewContainer {
         private final ViewCalendarMonthHeaderBinding headerBinding;
 
         MonthHeaderContainer(@NonNull View view) {
@@ -222,8 +222,24 @@ public class BondsCalendarPageFragment extends Fragment {
             headerBinding = ViewCalendarMonthHeaderBinding.bind(view);
         }
 
-        void bind(@NonNull CalendarMonth month) {
+        void bind(@NonNull CalendarMonth month, int eventCount) {
             headerBinding.monthHeaderText.setText(month.getYearMonth().format(MONTH_HEADER_FMT));
+            headerBinding.monthHeaderEvents.setText(eventCountLabel(eventCount));
         }
+    }
+
+    /** Count of payment-bearing dates in the given month, drawn from the current data. */
+    private int countEventsIn(@NonNull YearMonth ym) {
+        int total = 0;
+        for (Map.Entry<LocalDate, List<ExpectedPayment>> e : paymentsByDate.entrySet()) {
+            if (YearMonth.from(e.getKey()).equals(ym)) total += e.getValue().size();
+        }
+        return total;
+    }
+
+    private String eventCountLabel(int n) {
+        if (n == 0) return getString(R.string.bonds_calendar_month_events_zero);
+        if (n == 1) return getString(R.string.bonds_calendar_month_events_one);
+        return getString(R.string.bonds_calendar_month_events_many, n);
     }
 }

@@ -1,32 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Tax Overrides (editorial). Italic body intro at top, then a hairline-bound
+    list of per-asset rows. Empty state is italic body. No "+ Add override"
+    affordance — overrides are auto-listed per existing asset; adding/removing
+    happens implicitly through asset existence.
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:paddingHorizontal="@dimen/fm_page_padding_h"
+    android:paddingTop="12dp"
+    android:paddingBottom="16dp">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/tax_overrides_help"
-        android:textAppearance="?attr/textAppearanceBodySmall"
-        android:alpha="0.7"
-        android:layout_marginBottom="12dp" />
+        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+        android:textSize="13sp"
+        android:layout_marginBottom="14dp" />
 
     <TextView
         android:id="@+id/emptyText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/tax_overrides_empty"
-        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
         android:visibility="gone"
         android:layout_marginTop="16dp" />
+
+    <View
+        android:id="@+id/topRule"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/fm_rule_hairline"
+        android:background="?attr/colorOutlineVariant" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingBottom="16dp" />
+        android:clipToPadding="false" />
 </LinearLayout>

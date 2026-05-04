@@ -175,6 +175,7 @@ public final class GlobalFilterBinder {
     private void openDateRangePicker() {
         MaterialDatePicker.Builder<androidx.core.util.Pair<Long, Long>> builder =
                 MaterialDatePicker.Builder.dateRangePicker()
+                        .setTheme(R.style.ThemeOverlay_FinMon_DatePicker)
                         .setTitleText(R.string.chart_custom_picker_title);
 
         CustomRange existing = vm.customRange().getValue();

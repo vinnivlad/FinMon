@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Settings — editorial direction.
+    No cards. Each section = accent kicker + hairline rule, then a flat block
+    on bg_raised framed by 1 dp hairlines top + bottom. Picker rows show the
+    current value + chevron, tap-to-open a popup menu. Tax % defaults stay as
+    inline editable square outlined fields for ergonomics. Action buttons
+    (per-asset overrides, add asset, manual event, export/import) become
+    tappable rows with a chevron, matching JSX vocabulary.
+-->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -10,224 +19,547 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:paddingBottom="32dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_title"
-            android:textAppearance="?attr/textAppearanceHeadlineSmall"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Display section -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_section_display"
-            android:textAppearance="?attr/textAppearanceLabelSmall"
-            android:textAllCaps="true"
-            android:alpha="0.7"
-            android:layout_marginBottom="8dp" />
-
-        <com.google.android.material.card.MaterialCardView
+        <!-- ===== Display section ===== -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp">
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/fm_page_padding_h"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp">
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_section_display"
+                android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                android:textColor="@color/fm_accent"
+                android:textFontWeight="700" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:background="?attr/colorOutlineVariant" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="?attr/colorSurface">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+
+            <!-- Display currency row — tappable, opens popup. -->
             <LinearLayout
+                android:id="@+id/currencyRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="@dimen/fm_page_padding_h"
+                android:paddingVertical="12dp"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_display_currency_label"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Medium"
+                        android:textFontWeight="600" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_display_currency_help"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
 
                 <TextView
+                    android:id="@+id/currencyValue"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/settings_display_currency_label"
-                    android:textAppearance="?attr/textAppearanceTitleSmall" />
+                    android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+                    android:textSize="13sp"
+                    android:layout_marginEnd="8dp"
+                    tools:text="USD" />
+
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="@null" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+
+            <!-- Theme mode row — tappable, opens popup. -->
+            <LinearLayout
+                android:id="@+id/themeRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="@dimen/fm_page_padding_h"
+                android:paddingVertical="12dp"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_theme_mode_label"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Medium"
+                        android:textFontWeight="600" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_theme_mode_help"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
 
                 <TextView
+                    android:id="@+id/themeValue"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/settings_display_currency_help"
-                    android:textAppearance="?attr/textAppearanceBodySmall"
-                    android:alpha="0.7"
-                    android:layout_marginTop="2dp" />
+                    android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+                    android:textSize="13sp"
+                    android:layout_marginEnd="8dp"
+                    tools:text="System" />
 
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/displayCurrencyLayout"
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp">
-
-                    <com.google.android.material.textfield.MaterialAutoCompleteTextView
-                        android:id="@+id/displayCurrencyDropdown"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="none"
-                        tools:text="USD" />
-                </com.google.android.material.textfield.TextInputLayout>
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="@null" />
             </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
 
-        <!-- Tax section -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_section_taxes"
-            android:textAppearance="?attr/textAppearanceLabelSmall"
-            android:textAllCaps="true"
-            android:alpha="0.7"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="8dp" />
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+        </LinearLayout>
 
-        <com.google.android.material.card.MaterialCardView
+        <!-- ===== Taxes section ===== -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp">
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/fm_page_padding_h"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp">
 
-            <LinearLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:text="@string/settings_section_taxes"
+                android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                android:textColor="@color/fm_accent"
+                android:textFontWeight="700" />
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/settings_taxes_help"
-                    android:textAppearance="?attr/textAppearanceBodySmall"
-                    android:alpha="0.7" />
+            <View
+                android:layout_width="0dp"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:background="?attr/colorOutlineVariant" />
+        </LinearLayout>
 
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/defaultStockTaxLayout"
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:hint="@string/settings_default_stock_tax_label"
-                    app:suffixText="@string/tax_overrides_field_hint">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/defaultStockTaxInput"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="numberDecimal"
-                        android:imeOptions="actionDone" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/defaultBondTaxLayout"
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:hint="@string/settings_default_bond_tax_label"
-                    app:suffixText="@string/tax_overrides_field_hint">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/defaultBondTaxInput"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="numberDecimal"
-                        android:imeOptions="actionDone" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/buttonTaxOverrides"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/settings_action_tax_overrides" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- Manual entry section -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_section_manual_entry"
-            android:textAppearance="?attr/textAppearanceLabelSmall"
-            android:textAllCaps="true"
-            android:alpha="0.7"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="8dp" />
-
-        <com.google.android.material.card.MaterialCardView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp">
+            android:orientation="vertical"
+            android:background="?attr/colorSurface">
 
-            <LinearLayout
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/defaultStockTaxLayout"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:layout_marginHorizontal="@dimen/fm_page_padding_h"
+                android:layout_marginTop="12dp"
+                android:hint="@string/settings_default_stock_tax_label"
+                app:helperText="@string/settings_default_stock_tax_help"
+                app:helperTextEnabled="true"
+                app:suffixText="@string/tax_overrides_field_hint">
 
-                <TextView
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/defaultStockTaxInput"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/settings_manual_entry_help"
-                    android:textAppearance="?attr/textAppearanceBodySmall"
-                    android:alpha="0.7" />
+                    android:inputType="numberDecimal"
+                    android:imeOptions="actionDone" />
+            </com.google.android.material.textfield.TextInputLayout>
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/buttonAddAsset"
-                    style="?attr/materialButtonOutlinedStyle"
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/defaultBondTaxLayout"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="@dimen/fm_page_padding_h"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="12dp"
+                android:hint="@string/settings_default_bond_tax_label"
+                app:helperText="@string/settings_default_bond_tax_help"
+                app:helperTextEnabled="true"
+                app:suffixText="@string/tax_overrides_field_hint">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/defaultBondTaxInput"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/settings_action_add_asset" />
+                    android:inputType="numberDecimal"
+                    android:imeOptions="actionDone" />
+            </com.google.android.material.textfield.TextInputLayout>
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/buttonRecordManualEvent"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="match_parent"
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+
+            <!-- Per-asset overrides — tappable row to sub-screen. -->
+            <LinearLayout
+                android:id="@+id/buttonTaxOverrides"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="@dimen/fm_page_padding_h"
+                android:paddingVertical="12dp"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/settings_action_manual_event" />
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_action_tax_overrides"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Medium"
+                        android:textFontWeight="600" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_action_tax_overrides_help"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="@null" />
             </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
 
-        <!-- Data section -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_section_data"
-            android:textAppearance="?attr/textAppearanceLabelSmall"
-            android:textAllCaps="true"
-            android:alpha="0.7"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="8dp" />
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+        </LinearLayout>
 
-        <com.google.android.material.card.MaterialCardView
+        <!-- ===== Manual entry section ===== -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp">
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/fm_page_padding_h"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_section_manual_entry"
+                android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                android:textColor="@color/fm_accent"
+                android:textFontWeight="700" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:background="?attr/colorOutlineVariant" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="?attr/colorSurface">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
 
             <LinearLayout
+                android:id="@+id/buttonAddAsset"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="@dimen/fm_page_padding_h"
+                android:paddingVertical="12dp"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true">
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/buttonExportData"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="match_parent"
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:text="@string/menu_export_data" />
+                    android:orientation="vertical">
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/buttonImportData"
-                    style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/menu_import_data" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_action_add_asset"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Medium"
+                        android:textFontWeight="600" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_action_add_asset_help"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="@null" />
             </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+
+            <LinearLayout
+                android:id="@+id/buttonRecordManualEvent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="@dimen/fm_page_padding_h"
+                android:paddingVertical="12dp"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_action_manual_event"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Medium"
+                        android:textFontWeight="600" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_action_manual_event_help"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="@null" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+        </LinearLayout>
+
+        <!-- ===== Data section ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/fm_page_padding_h"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_section_data"
+                android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                android:textColor="@color/fm_accent"
+                android:textFontWeight="700" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:background="?attr/colorOutlineVariant" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="?attr/colorSurface">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+
+            <LinearLayout
+                android:id="@+id/buttonExportData"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="@dimen/fm_page_padding_h"
+                android:paddingVertical="12dp"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/menu_export_data"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Medium"
+                        android:textFontWeight="600" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/menu_export_data_help"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="@null" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+
+            <LinearLayout
+                android:id="@+id/buttonImportData"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="@dimen/fm_page_padding_h"
+                android:paddingVertical="12dp"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/menu_import_data"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Medium"
+                        android:textFontWeight="600" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/menu_import_data_help"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="@null" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Single row in the "Best & worst months" list under the Growth chart.
+    Left: serif month name (italic when negative — JSX cue). Right: mono
+    signed P&L number, colored by sign. Hairline divider drawn below each row
+    by the parent LinearLayout (not DividerItemDecoration — list is a plain
+    LinearLayout, not a RecyclerView).
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingVertical="8dp"
+        android:baselineAligned="true">
+
+        <TextView
+            android:id="@+id/monthLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textAppearance="@style/TextAppearance.FinMon.Title.Small"
+            android:textFontWeight="500"
+            tools:text="May 2026" />
+
+        <TextView
+            android:id="@+id/monthValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+            tools:text="+4,180"
+            tools:textColor="@color/pnl_positive" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/fm_rule_hairline"
+        android:background="?attr/colorOutlineVariant" />
+</LinearLayout>

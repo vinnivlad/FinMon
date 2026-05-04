@@ -7,9 +7,12 @@ import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import android.graphics.drawable.Drawable;
+
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.my.finmon.R;
@@ -79,9 +82,15 @@ public class CurrencyPageFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        adapter = new TradeRowAdapter(requireContext());
+        adapter = new TradeRowAdapter(requireContext(), currency.name());
         binding.rowList.setLayoutManager(new LinearLayoutManager(requireContext()));
         binding.rowList.setAdapter(adapter);
+        // Match Holdings — hairline divider between rows, inset to row content padding.
+        DividerItemDecoration divider = new DividerItemDecoration(
+                requireContext(), DividerItemDecoration.VERTICAL);
+        Drawable hairline = ContextCompat.getDrawable(requireContext(), R.drawable.fm_row_divider);
+        if (hairline != null) divider.setDrawable(hairline);
+        binding.rowList.addItemDecoration(divider);
 
         parentVm = new ViewModelProvider(requireParentFragment())
                 .get(CurrencyBreakdownViewModel.class);
@@ -123,11 +132,16 @@ public class CurrencyPageFragment extends Fragment {
 
     private void renderBucket() {
         if (binding == null) return;
+        String ccy = currency.name();
+        binding.bucketKicker.setText(getString(R.string.breakdown_bucket_kicker, ccy));
+        binding.bucketValueCurrency.setText(ccy);
+
         PortfolioTotals t = parentVm.totals().getValue();
         if (t == null) return;
         NativeBucket nb = t.bucketByCurrency.get(currency);
         if (nb == null) {
-            binding.bucketValue.setText("");
+            binding.bucketValueInteger.setText("");
+            binding.bucketValueFraction.setText("");
             binding.bucketInvested.setText("");
             binding.bucketPnl.setText("");
             binding.bucketDividends.setText("");
@@ -135,10 +149,9 @@ public class CurrencyPageFragment extends Fragment {
             binding.bucketUnrealized.setText("");
             return;
         }
-        String ccy = currency.name();
 
         // Value + Invested are period-independent (current snapshot / lifetime capital).
-        binding.bucketValue.setText(MONEY.format(nb.value) + " " + ccy);
+        renderHeadlineSplit(nb.value);
         binding.bucketInvested.setText(getString(
                 R.string.totals_invested_label,
                 MONEY.format(nb.invested) + " " + ccy));
@@ -169,12 +182,13 @@ public class CurrencyPageFragment extends Fragment {
             }
         }
 
+        // Period P&L: ▲/▼ glyph + signed amount + (pct%), colored.
+        String arrow = periodPnl.signum() > 0
+                ? getString(R.string.arrow_up)
+                : (periodPnl.signum() < 0 ? getString(R.string.arrow_down) : "");
         StringBuilder pnlText = new StringBuilder();
-        pnlText.append(getString(R.string.chart_period_pnl_label))
-                .append(": ")
-                .append(SIGNED_MONEY.format(periodPnl))
-                .append(' ')
-                .append(ccy);
+        if (!arrow.isEmpty()) pnlText.append(arrow).append(' ');
+        pnlText.append(SIGNED_MONEY.format(periodPnl));
         if (nb.invested.signum() != 0) {
             BigDecimal pct = periodPnl.divide(nb.invested.abs(), PCT_MC).multiply(HUNDRED);
             pnlText.append(" (").append(PCT.format(pct)).append(')');
@@ -182,13 +196,29 @@ public class CurrencyPageFragment extends Fragment {
         binding.bucketPnl.setText(pnlText.toString());
         binding.bucketPnl.setTextColor(colorFor(periodPnl.signum()));
 
-        bindBreakdownRow(binding.bucketDividends, periodDividends, ccy);
-        bindBreakdownRow(binding.bucketRealized, periodRealized, ccy);
-        bindBreakdownRow(binding.bucketUnrealized, periodUnrealized, ccy);
+        bindBreakdownRow(binding.bucketDividends, periodDividends);
+        bindBreakdownRow(binding.bucketRealized, periodRealized);
+        bindBreakdownRow(binding.bucketUnrealized, periodUnrealized);
     }
 
-    private void bindBreakdownRow(@NonNull android.widget.TextView v, @NonNull BigDecimal amount, @NonNull String ccy) {
-        v.setText(SIGNED_MONEY.format(amount) + " " + ccy);
+    private void renderHeadlineSplit(@NonNull BigDecimal amount) {
+        String formatted = MONEY.format(amount);
+        int dot = formatted.lastIndexOf('.');
+        String intPart;
+        String fracPart;
+        if (dot >= 0) {
+            intPart = formatted.substring(0, dot);
+            fracPart = formatted.substring(dot);
+        } else {
+            intPart = formatted;
+            fracPart = "";
+        }
+        binding.bucketValueInteger.setText(intPart);
+        binding.bucketValueFraction.setText(fracPart);
+    }
+
+    private void bindBreakdownRow(@NonNull android.widget.TextView v, @NonNull BigDecimal amount) {
+        v.setText(SIGNED_MONEY.format(amount));
         v.setTextColor(colorFor(amount.signum()));
     }
 

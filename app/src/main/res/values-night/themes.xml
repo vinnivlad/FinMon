@@ -1,9 +1,75 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.FinMon" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/md_theme_primary_dark</item>
-        <item name="colorOnPrimary">@color/md_theme_onPrimary_dark</item>
-        <item name="colorSecondary">@color/md_theme_secondary_dark</item>
-        <item name="colorOnSecondary">@color/md_theme_onSecondary_dark</item>
-        <item name="android:statusBarColor">?attr/colorPrimary</item>
+
+    <!--
+        FinMon Editorial theme — DARK ("Cool Charcoal").
+        Same structure as values/themes.xml; the only differences are the parent
+        (Dark M3) and the system-bar light flags. All color refs use @color/fm_*
+        which auto-flip via values-night/colors.xml.
+    -->
+    <style name="Theme.FinMon" parent="Theme.Material3.Dark.NoActionBar">
+
+        <!-- ===== Color roles ===== -->
+        <item name="colorPrimary">@color/fm_accent</item>
+        <item name="colorOnPrimary">@color/fm_bg</item>
+        <item name="colorPrimaryContainer">@color/fm_accent_soft</item>
+        <item name="colorOnPrimaryContainer">@color/fm_ink</item>
+
+        <item name="colorSecondary">@color/fm_ink_soft</item>
+        <item name="colorOnSecondary">@color/fm_bg</item>
+        <item name="colorSecondaryContainer">@color/fm_rule</item>
+        <item name="colorOnSecondaryContainer">@color/fm_ink</item>
+
+        <item name="android:colorBackground">@color/fm_bg</item>
+        <item name="colorOnBackground">@color/fm_ink</item>
+        <item name="colorSurface">@color/fm_bg_raised</item>
+        <item name="colorOnSurface">@color/fm_ink</item>
+        <item name="colorSurfaceVariant">@color/fm_bg</item>
+        <item name="colorOnSurfaceVariant">@color/fm_ink_soft</item>
+        <item name="android:windowBackground">@color/fm_bg</item>
+
+        <item name="colorOutline">@color/fm_rule_strong</item>
+        <item name="colorOutlineVariant">@color/fm_rule</item>
+
+        <item name="colorError">@color/fm_pnl_down</item>
+        <item name="colorOnError">@color/fm_bg</item>
+
+        <item name="elevationOverlayEnabled">false</item>
+
+        <!-- ===== System bars (charcoal bg = light icons) ===== -->
+        <item name="android:statusBarColor">@color/fm_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">@color/fm_bg</item>
+        <item name="android:windowLightNavigationBar">false</item>
+
+        <!--
+            ===== Typography =====
+            See light theme for the rationale — theme fontFamily was overriding
+            TextAppearance + view-level android:fontFamily on Android 16.
+        -->
+        <item name="textAppearanceDisplayLarge">@style/TextAppearance.FinMon.Display.Headline</item>
+        <item name="textAppearanceDisplayMedium">@style/TextAppearance.FinMon.Display.Large</item>
+        <item name="textAppearanceDisplaySmall">@style/TextAppearance.FinMon.Display.Medium</item>
+
+        <item name="textAppearanceHeadlineLarge">@style/TextAppearance.FinMon.Display.Large</item>
+        <item name="textAppearanceHeadlineMedium">@style/TextAppearance.FinMon.Display.Medium</item>
+        <item name="textAppearanceHeadlineSmall">@style/TextAppearance.FinMon.Display.Small</item>
+
+        <item name="textAppearanceTitleLarge">@style/TextAppearance.FinMon.Title.Large</item>
+        <item name="textAppearanceTitleMedium">@style/TextAppearance.FinMon.Title.Medium</item>
+        <item name="textAppearanceTitleSmall">@style/TextAppearance.FinMon.Title.Small</item>
+
+        <item name="textAppearanceBodyLarge">@style/TextAppearance.FinMon.Body.Medium</item>
+        <item name="textAppearanceBodyMedium">@style/TextAppearance.FinMon.Body.Medium</item>
+        <item name="textAppearanceBodySmall">@style/TextAppearance.FinMon.Body.Small</item>
+
+        <item name="textAppearanceLabelLarge">@style/TextAppearance.FinMon.Label.Large</item>
+        <item name="textAppearanceLabelMedium">@style/TextAppearance.FinMon.Label.Medium</item>
+        <item name="textAppearanceLabelSmall">@style/TextAppearance.FinMon.Label.Small</item>
+
+        <item name="bottomNavigationStyle">@style/Widget.FinMon.BottomNavigationView</item>
+        <item name="tabStyle">@style/Widget.FinMon.TabLayout</item>
+        <item name="chipStyle">@style/Widget.FinMon.Chip.Filter</item>
+        <!-- See light theme — kills the purple tonal wash on MaterialAlertDialog. -->
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.FinMon.AlertDialog</item>
     </style>
 </resources>

@@ -1,22 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Material 3 seed: finance-neutral teal/green. Light scheme. -->
-    <color name="md_theme_primary">#00687A</color>
-    <color name="md_theme_onPrimary">#FFFFFF</color>
-    <color name="md_theme_secondary">#4B6268</color>
-    <color name="md_theme_onSecondary">#FFFFFF</color>
+    <!--
+        FinMon Editorial palette — LIGHT mode (FM_LIGHT).
+        Source: app/design/design_handoff_finmon_editorial/README.md + finmon-shared.jsx
+        Dark overrides live in values-night/colors.xml; layouts and theme should
+        reference @color/fm_* so colors auto-flip with system mode.
+    -->
 
-    <!-- Dark scheme -->
-    <color name="md_theme_primary_dark">#7DD2E3</color>
-    <color name="md_theme_onPrimary_dark">#003640</color>
-    <color name="md_theme_secondary_dark">#B2CBD1</color>
-    <color name="md_theme_onSecondary_dark">#1D343A</color>
+    <!-- Cream surface + raised layer + ink text -->
+    <color name="fm_bg">#FBF9F4</color>
+    <color name="fm_bg_raised">#FFFFFF</color>
+    <color name="fm_ink">#1A1814</color>
+    <color name="fm_ink_soft">#4F4A42</color>
+    <color name="fm_ink_mute">#6F6A60</color>
 
-    <!-- Semantic colors for P&L -->
+    <!-- Rules / dividers -->
+    <color name="fm_rule">#E6E0D3</color>
+    <color name="fm_rule_strong">#1A1814</color>
+
+    <!-- Brand accent -->
+    <color name="fm_accent">#00687A</color>
+    <color name="fm_accent_soft">#9CC2C9</color>
+
+    <!-- P&L -->
+    <color name="fm_pnl_up">#1B873F</color>
+    <color name="fm_pnl_down">#C62828</color>
+
+    <!-- Filter chips -->
+    <color name="fm_chip_bg_selected">#1A1814</color>
+    <color name="fm_chip_text_selected">#FBF9F4</color>
+    <color name="fm_chip_text_idle">#5B554D</color>
+    <color name="fm_chip_border_idle">#CFC7B6</color>
+
+    <!-- Allocation palette (donut + legend) — editorial mixed: alternating warm
+         (rust / mustard / terracotta) and cool (sage / slate / plum) so adjacent
+         slices stay distinct. Mid-saturation across the set so no single slice
+         dominates by sheer darkness, and dark enough that the cream entry label
+         stays readable on top. -->
+    <color name="fm_alloc_1">#A85432</color>
+    <color name="fm_alloc_2">#5B7A4A</color>
+    <color name="fm_alloc_3">#C8A85A</color>
+    <color name="fm_alloc_4">#3F6B7E</color>
+    <color name="fm_alloc_5">#B8634A</color>
+    <color name="fm_alloc_6">#6B4D7A</color>
+
+    <!--
+        Legacy aliases — referenced from existing layouts. Kept so layouts don't
+        have to change. Auto-flip in dark mode via values-night/colors.xml.
+    -->
     <color name="pnl_positive">#1B873F</color>
     <color name="pnl_negative">#C62828</color>
-    <color name="pnl_neutral">#6B7280</color>
+    <color name="pnl_neutral">#8A8478</color>
 
-    <!-- Launcher -->
+    <!-- Launcher (mode-independent — keep accent for both) -->
     <color name="ic_launcher_background">#00687A</color>
 </resources>

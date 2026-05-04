@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Source Serif 4 ships no static Medium TTF, so weight 500 maps to Regular.
+    MediumItalic likewise maps to plain Italic.
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <font
+        android:fontStyle="normal"
+        android:fontWeight="400"
+        android:font="@font/source_serif_4_regular"
+        app:fontStyle="normal"
+        app:fontWeight="400"
+        app:font="@font/source_serif_4_regular" />
+    <font
+        android:fontStyle="normal"
+        android:fontWeight="500"
+        android:font="@font/source_serif_4_regular"
+        app:fontStyle="normal"
+        app:fontWeight="500"
+        app:font="@font/source_serif_4_regular" />
+    <font
+        android:fontStyle="normal"
+        android:fontWeight="600"
+        android:font="@font/source_serif_4_semibold"
+        app:fontStyle="normal"
+        app:fontWeight="600"
+        app:font="@font/source_serif_4_semibold" />
+    <font
+        android:fontStyle="normal"
+        android:fontWeight="700"
+        android:font="@font/source_serif_4_bold"
+        app:fontStyle="normal"
+        app:fontWeight="700"
+        app:font="@font/source_serif_4_bold" />
+
+    <font
+        android:fontStyle="italic"
+        android:fontWeight="400"
+        android:font="@font/source_serif_4_italic"
+        app:fontStyle="italic"
+        app:fontWeight="400"
+        app:font="@font/source_serif_4_italic" />
+    <font
+        android:fontStyle="italic"
+        android:fontWeight="500"
+        android:font="@font/source_serif_4_italic"
+        app:fontStyle="italic"
+        app:fontWeight="500"
+        app:font="@font/source_serif_4_italic" />
+</font-family>

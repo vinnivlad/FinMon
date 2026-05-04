@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Add Asset (editorial). Form fields use the editorial outlined-box style;
+    "Bond fields" is gated by a small accent-kicker section marker so the bond
+    sub-block reads as deliberately appearing rather than just popping in.
+    Save button is the full-width ink-fill editorial Save.
+    No page title — the activity-level masthead carries the destination name.
+-->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -9,23 +16,19 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/add_asset_title"
-            android:textAppearance="?attr/textAppearanceHeadlineSmall"
-            android:paddingBottom="16dp" />
+        android:paddingHorizontal="@dimen/fm_page_padding_h"
+        android:paddingTop="12dp"
+        android:paddingBottom="32dp">
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/tickerLayout"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+            style="@style/Widget.FinMon.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
             android:hint="@string/field_ticker"
-            app:helperText="@string/field_ticker_hint">
+            app:helperText="@string/field_ticker_hint"
+            app:helperTextEnabled="true">
 
             <com.google.android.material.textfield.MaterialAutoCompleteTextView
                 android:id="@+id/ticker"
@@ -37,12 +40,13 @@
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/remoteTickerLayout"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
             android:hint="@string/field_remote_ticker"
-            app:helperText="@string/field_remote_ticker_hint">
+            app:helperText="@string/field_remote_ticker_hint"
+            app:helperTextEnabled="true">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/remoteTicker"
@@ -54,13 +58,13 @@
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/currencyLayout"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+            style="@style/Widget.FinMon.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
             android:hint="@string/field_currency">
 
-            <AutoCompleteTextView
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
                 android:id="@+id/currency"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -69,19 +73,20 @@
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/typeLayout"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+            style="@style/Widget.FinMon.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
+            android:layout_marginBottom="4dp"
             android:hint="@string/field_type">
 
-            <AutoCompleteTextView
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
                 android:id="@+id/type"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="none" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <!-- Bond fields — kicker + hairline + indented form group, hidden when type=STOCK. -->
         <LinearLayout
             android:id="@+id/bondFields"
             android:layout_width="match_parent"
@@ -89,9 +94,33 @@
             android:orientation="vertical"
             android:visibility="gone">
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="6dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/add_asset_section_bond"
+                    android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                    android:textColor="@color/fm_accent"
+                    android:textFontWeight="700" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/fm_rule_hairline"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:background="?attr/colorOutlineVariant" />
+            </LinearLayout>
+
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/maturityLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
@@ -108,7 +137,7 @@
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/faceLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
@@ -124,10 +153,9 @@
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/yieldLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
                 android:hint="@string/field_bond_yield">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -141,9 +169,10 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/saveButton"
+            style="@style/Widget.FinMon.Button.Save"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="20dp"
             android:text="@string/action_save" />
     </LinearLayout>
 </ScrollView>

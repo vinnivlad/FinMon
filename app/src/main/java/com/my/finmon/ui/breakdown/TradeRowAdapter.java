@@ -29,12 +29,14 @@ final class TradeRowAdapter extends ListAdapter<TradeRow, TradeRowAdapter.VH> {
     private final int colorPositive;
     private final int colorNegative;
     private final int colorNeutral;
+    private final String currencyCode;
 
-    TradeRowAdapter(@NonNull Context ctx) {
+    TradeRowAdapter(@NonNull Context ctx, @NonNull String currencyCode) {
         super(DIFF);
         this.colorPositive = ContextCompat.getColor(ctx, R.color.pnl_positive);
         this.colorNegative = ContextCompat.getColor(ctx, R.color.pnl_negative);
         this.colorNeutral = ContextCompat.getColor(ctx, R.color.pnl_neutral);
+        this.currencyCode = currencyCode;
     }
 
     @NonNull
@@ -50,9 +52,16 @@ final class TradeRowAdapter extends ListAdapter<TradeRow, TradeRowAdapter.VH> {
         TradeRow r = getItem(position);
         Context ctx = h.itemView.getContext();
 
-        h.b.tickerLine.setText(ctx.getString(
-                R.string.trade_row_ticker_line, r.ticker, r.assetType.name()));
+        // Row 1 left: ticker + kind kicker (e.g. "VOO" + "· STOCK").
+        h.b.ticker.setText(r.ticker);
+        h.b.kindKicker.setText("· " + r.assetType.name());
 
+        // Row 1 right: window total P&L + currency-code kicker suffix.
+        h.b.totalPnl.setText(signed(r.windowTotalPnl));
+        h.b.totalPnl.setTextColor(colorFor(r.windowTotalPnl));
+        h.b.totalPnlCcy.setText(currencyCode);
+
+        // Row 2: date · qty @ avg, with optional "holding N" suffix when partly closed.
         boolean partiallyClosed = r.remainingQty.compareTo(r.originalQty) != 0;
         String qtyLine = partiallyClosed
                 ? ctx.getString(R.string.trade_row_qty_line_partial,
@@ -66,14 +75,12 @@ final class TradeRowAdapter extends ListAdapter<TradeRow, TradeRowAdapter.VH> {
                     MONEY.format(r.purchasePrice));
         h.b.qtyLine.setText(qtyLine);
 
+        // Row 3: realized · unrealized · dividends breakdown (right-aligned mono mute).
         h.b.breakdownLine.setText(ctx.getString(
                 R.string.trade_row_breakdown,
                 signed(r.windowRealizedPnl),
                 signed(r.windowUnrealizedPnl),
                 signed(r.windowDividends)));
-
-        h.b.totalPnl.setText(signed(r.windowTotalPnl));
-        h.b.totalPnl.setTextColor(colorFor(r.windowTotalPnl));
     }
 
     private int colorFor(@NonNull BigDecimal v) {

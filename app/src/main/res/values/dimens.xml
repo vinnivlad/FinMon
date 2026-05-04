@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        FinMon Editorial spacing & rules.
+        Source: app/design/design_handoff_finmon_editorial/README.md
+    -->
+
+    <!-- Page padding (horizontal) — 16 dp everywhere -->
+    <dimen name="fm_page_padding_h">16dp</dimen>
+
+    <!-- List rows (Portfolio / Bonds / Breakdown) — 16 h × 12 v -->
+    <dimen name="fm_row_padding_h">16dp</dimen>
+    <dimen name="fm_row_padding_v">12dp</dimen>
+
+    <!-- Settings rows — 16 h × 10 v -->
+    <dimen name="fm_settings_row_padding_h">16dp</dimen>
+    <dimen name="fm_settings_row_padding_v">10dp</dimen>
+
+    <!-- Rules / dividers -->
+    <dimen name="fm_rule_hairline">1dp</dimen>
+    <dimen name="fm_rule_strong">2dp</dimen>
+
+    <!-- Bottom-nav active stripe (14 × 2 dp) -->
+    <dimen name="fm_nav_stripe_width">14dp</dimen>
+    <dimen name="fm_nav_stripe_height">2dp</dimen>
+
+    <!-- Save button — full-width, 14 dp vertical padding -->
+    <dimen name="fm_save_button_padding_v">14dp</dimen>
+
+    <!-- Field box internal padding -->
+    <dimen name="fm_field_padding_h">12dp</dimen>
+    <dimen name="fm_field_padding_v">10dp</dimen>
+
+    <!-- Icon sizes -->
+    <dimen name="fm_icon_inline">14dp</dimen>
+    <dimen name="fm_icon_fab">18dp</dimen>
+</resources>

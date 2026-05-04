@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        FinMon Editorial component styles.
+        Source: app/design/design_handoff_finmon_editorial/README.md (Components section).
+        These are the building blocks Phase 3 will plug into individual screens.
+        A few are wired globally via Theme.FinMon attrs (chipStyle, tabStyle,
+        bottomNavigationStyle) so they apply without per-layout changes.
+    -->
+
+    <!-- ========== Cards ========== -->
+
+    <!-- Square outlined card with 1 dp ink stroke. No corner radius, no elevation. -->
+    <style name="Widget.FinMon.CardView" parent="Widget.Material3.CardView.Outlined">
+        <item name="cardCornerRadius">0dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">@dimen/fm_rule_hairline</item>
+        <item name="strokeColor">?attr/colorOutline</item>
+        <item name="cardBackgroundColor">?attr/colorSurface</item>
+    </style>
+
+    <!-- Variant with hairline rule (E6E0D3) instead of strong ink stroke. -->
+    <style name="Widget.FinMon.CardView.Hairline">
+        <item name="strokeColor">?attr/colorOutlineVariant</item>
+    </style>
+
+    <!-- ========== Filter chips ========== -->
+
+    <!-- Fully-rounded pill (cornerSize=50% snaps to half the short edge). -->
+    <style name="ShapeAppearance.FinMon.Chip.Pill" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
+    <!--
+        Pill chip — selected = ink fill + cream text + checkmark; idle = transparent
+        with a 1 dp idle border. Auto-flips in dark via the @color/fm_* state lists.
+    -->
+    <style name="Widget.FinMon.Chip.Filter" parent="Widget.Material3.Chip.Filter">
+        <item name="shapeAppearance">@style/ShapeAppearance.FinMon.Chip.Pill</item>
+        <item name="chipBackgroundColor">@color/fm_chip_bg</item>
+        <item name="chipStrokeColor">@color/fm_chip_stroke</item>
+        <item name="chipStrokeWidth">@dimen/fm_rule_hairline</item>
+        <item name="android:textColor">@color/fm_chip_text</item>
+        <item name="checkedIconTint">@color/fm_chip_text</item>
+        <item name="android:textAppearance">@style/TextAppearance.FinMon.Chip</item>
+        <item name="rippleColor">@color/fm_ink_mute</item>
+    </style>
+
+    <!-- ========== Tabs ========== -->
+
+    <!--
+        2 dp ink underline indicator + ink-active / mute-inactive text. Italic-active
+        is dropped for parity with the bottom-nav decision (avoiding a custom view
+        for one styling detail); colour swap + underline is the editorial signal.
+    -->
+    <style name="Widget.FinMon.TabLayout" parent="Widget.Material3.TabLayout">
+        <!-- Cream activity bg, not Material's default colorSurface (white). -->
+        <item name="android:background">?android:attr/colorBackground</item>
+        <item name="tabIndicatorColor">?attr/colorOutline</item>
+        <item name="tabIndicatorHeight">@dimen/fm_rule_strong</item>
+        <item name="tabSelectedTextColor">?attr/colorOnBackground</item>
+        <item name="tabTextColor">@color/fm_ink_mute</item>
+        <item name="tabTextAppearance">@style/TextAppearance.FinMon.Title.Small</item>
+        <!-- Suppress the round semi-transparent state-layer; the underline is the signal. -->
+        <item name="tabRippleColor">@android:color/transparent</item>
+    </style>
+
+    <!-- ========== Buttons ========== -->
+
+    <!--
+        Save button: full-width, square, ink fill, cream label, all-caps Inter 12/700.
+        textAppearance handles the label colour + caps + letter-spacing (see type.xml).
+    -->
+    <style name="Widget.FinMon.Button.Save" parent="Widget.Material3.Button">
+        <item name="cornerRadius">0dp</item>
+        <item name="backgroundTint">?attr/colorOnBackground</item>
+        <item name="android:textAppearance">@style/TextAppearance.FinMon.SaveButton</item>
+        <item name="android:paddingTop">@dimen/fm_save_button_padding_v</item>
+        <item name="android:paddingBottom">@dimen/fm_save_button_padding_v</item>
+        <item name="rippleColor">@color/fm_ink_mute</item>
+    </style>
+
+    <!--
+        Outlined secondary action — square, 1 dp ink stroke, ink label on bg_raised.
+        Used for "Per-asset overrides", "Add asset", "Export data", etc.
+    -->
+    <style name="Widget.FinMon.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="cornerRadius">0dp</item>
+        <item name="strokeWidth">@dimen/fm_rule_hairline</item>
+        <item name="strokeColor">?attr/colorOutline</item>
+        <item name="android:textAppearance">@style/TextAppearance.FinMon.Label.Large</item>
+        <item name="android:textColor">?attr/colorOnBackground</item>
+    </style>
+
+    <!--
+        Compact square icon button — 32×32, 1 dp ink stroke, ink-tinted icon on
+        bg_raised. Used for the Market header refresh button (and any future
+        in-line icon affordance that needs to read as editorial outline rather
+        than Material's circular tonal button).
+    -->
+    <!--
+        Parented on Widget.FinMon.Button.Outlined (already square + ink-stroke)
+        rather than M3's Button.IconButton.Outlined — the latter pins a circular
+        shapeAppearance via materialThemeOverlay that overrides cornerRadius and
+        even an explicit shapeAppearance override. Inheriting from the working
+        outlined style and adjusting sizing for icon-only use is simpler and
+        actually square.
+    -->
+    <style name="Widget.FinMon.IconButton" parent="Widget.FinMon.Button.Outlined">
+        <item name="iconTint">?attr/colorOnBackground</item>
+        <item name="iconPadding">0dp</item>
+        <item name="iconSize">14dp</item>
+        <item name="iconGravity">textStart</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:minWidth">32dp</item>
+        <item name="android:minHeight">32dp</item>
+        <item name="android:paddingStart">0dp</item>
+        <item name="android:paddingEnd">0dp</item>
+    </style>
+
+    <!-- ========== Text fields ========== -->
+
+    <!--
+        Square outlined text field, 1 dp ink stroke, white/raised fill.
+        Internal label (TextInputLayout's hint) reads as the editorial kicker.
+    -->
+    <style name="Widget.FinMon.TextInputLayout.OutlinedBox"
+        parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxCornerRadiusTopStart">0dp</item>
+        <item name="boxCornerRadiusTopEnd">0dp</item>
+        <item name="boxCornerRadiusBottomStart">0dp</item>
+        <item name="boxCornerRadiusBottomEnd">0dp</item>
+        <item name="boxStrokeWidth">@dimen/fm_rule_hairline</item>
+        <item name="boxStrokeWidthFocused">@dimen/fm_rule_hairline</item>
+        <item name="boxStrokeColor">?attr/colorOutline</item>
+        <item name="boxBackgroundColor">?attr/colorSurface</item>
+        <item name="hintTextAppearance">@style/TextAppearance.FinMon.Kicker</item>
+    </style>
+
+    <style name="Widget.FinMon.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+        parent="Widget.FinMon.TextInputLayout.OutlinedBox">
+        <item name="endIconMode">dropdown_menu</item>
+        <!-- Without this overlay the inner (Material)AutoCompleteTextView doesn't
+             pick up M3's TextInputLayout-aware autoCompleteTextViewStyle, so its
+             hint and typed-text size render off-spec compared to a plain
+             TextInputEditText sibling. Inheriting Material's overlay puts both
+             back on the same metrics. -->
+        <item name="materialThemeOverlay">@style/ThemeOverlay.Material3.AutoCompleteTextView.OutlinedBox</item>
+    </style>
+
+    <!-- ========== Date-range picker (Custom filter chip) ========== -->
+
+    <!--
+        Editorial overlay for MaterialDatePicker.dateRangePicker(). Applied via
+        builder.setTheme(R.style.ThemeOverlay_FinMon_DatePicker). Selected day +
+        today + confirm button pull `colorPrimary` (ink fill / cream label, matching
+        the Save button); the range band uses the soft beige rule colour; surface
+        sits on bg_raised so the dialog reads as a card on the cream activity.
+    -->
+    <style name="ThemeOverlay.FinMon.DatePicker" parent="ThemeOverlay.Material3.MaterialCalendar">
+        <item name="colorPrimary">@color/fm_ink</item>
+        <item name="colorOnPrimary">@color/fm_bg</item>
+        <item name="colorPrimaryContainer">@color/fm_rule</item>
+        <item name="colorOnPrimaryContainer">@color/fm_ink</item>
+        <item name="colorSurface">@color/fm_bg_raised</item>
+        <item name="colorOnSurface">@color/fm_ink</item>
+        <item name="colorSurfaceVariant">@color/fm_rule</item>
+        <item name="colorOnSurfaceVariant">@color/fm_ink_soft</item>
+        <item name="android:colorBackground">@color/fm_bg_raised</item>
+        <item name="colorOnBackground">@color/fm_ink</item>
+        <item name="colorOutline">@color/fm_rule_strong</item>
+        <item name="colorOutlineVariant">@color/fm_rule</item>
+
+        <!--
+            All surfaceContainer* roles point at bg_raised so the picker dialog,
+            its header strip, and any elevated child surfaces stay neutral.
+            Without these, M3 derives them from colorPrimary's tonal palette,
+            which falls back to purple when only colorPrimary is overridden
+            (no tonal palette supplied).
+        -->
+        <item name="colorSurfaceContainer">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerLow">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerLowest">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerHigh">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerHighest">@color/fm_bg_raised</item>
+        <item name="colorSurfaceBright">@color/fm_bg_raised</item>
+        <item name="colorSurfaceDim">@color/fm_bg</item>
+
+        <!--
+            Disables Material's tonal-elevation overlay (the translucent primary
+            wash applied to elevated surfaces). This is the same flag the main
+            Theme.FinMon sets, but ThemeOverlay.MaterialCalendar doesn't inherit it
+            on its own.
+        -->
+        <item name="elevationOverlayEnabled">false</item>
+    </style>
+
+    <!-- ========== Alert dialogs (BondDetail, DatePayments, etc.) ========== -->
+
+    <!--
+        Editorial overlay for MaterialAlertDialog. Wired globally via
+        Theme.FinMon → materialAlertDialogTheme so every MaterialAlertDialogBuilder
+        picks it up. Same surface/palette overrides as ThemeOverlay.FinMon.DatePicker,
+        same reason: setting only colorPrimary makes M3 derive surfaceContainer*
+        from a tonal palette that falls back to purple. All container roles pinned
+        to bg_raised; tonal-elevation overlay disabled.
+    -->
+    <style name="ThemeOverlay.FinMon.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorPrimary">@color/fm_ink</item>
+        <item name="colorOnPrimary">@color/fm_bg</item>
+        <item name="colorPrimaryContainer">@color/fm_rule</item>
+        <item name="colorOnPrimaryContainer">@color/fm_ink</item>
+        <item name="colorSurface">@color/fm_bg_raised</item>
+        <item name="colorOnSurface">@color/fm_ink</item>
+        <item name="colorSurfaceVariant">@color/fm_rule</item>
+        <item name="colorOnSurfaceVariant">@color/fm_ink_soft</item>
+        <item name="android:colorBackground">@color/fm_bg_raised</item>
+        <item name="colorOnBackground">@color/fm_ink</item>
+        <item name="colorOutline">@color/fm_rule_strong</item>
+        <item name="colorOutlineVariant">@color/fm_rule</item>
+
+        <item name="colorSurfaceContainer">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerLow">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerLowest">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerHigh">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerHighest">@color/fm_bg_raised</item>
+        <item name="colorSurfaceBright">@color/fm_bg_raised</item>
+        <item name="colorSurfaceDim">@color/fm_bg</item>
+
+        <item name="elevationOverlayEnabled">false</item>
+    </style>
+
+    <!-- ========== FAB ========== -->
+
+    <style name="ShapeAppearance.FinMon.Square" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">0dp</item>
+    </style>
+
+    <!-- Square ink-fill FAB with white icon (per editorial spec). -->
+    <style name="Widget.FinMon.FAB" parent="Widget.Material3.FloatingActionButton.Primary">
+        <item name="shapeAppearance">@style/ShapeAppearance.FinMon.Square</item>
+        <item name="backgroundTint">?attr/colorOnBackground</item>
+        <item name="tint">?android:attr/colorBackground</item>
+    </style>
+
+    <!-- ========== Bottom nav ========== -->
+
+    <!-- Empty active-indicator: 0×0 so M3's pill doesn't draw at all. -->
+    <style name="Widget.FinMon.BottomNavigationView.ActiveIndicator"
+        parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:width">0dp</item>
+        <item name="android:height">0dp</item>
+        <item name="android:color">@android:color/transparent</item>
+    </style>
+
+    <!--
+        2 dp ink top border, no active-indicator pill, ink-active / mute-inactive
+        labels and icons. The 14×2 accent stripe under the active label from the
+        spec is skipped — it requires replacing BottomNavigationView with a custom
+        view (per the dropped italic-active decision: not worth the rewrite).
+    -->
+    <style name="Widget.FinMon.BottomNavigationView" parent="Widget.Material3.BottomNavigationView">
+        <item name="android:background">@drawable/bg_fm_bottom_nav</item>
+        <item name="itemActiveIndicatorStyle">@style/Widget.FinMon.BottomNavigationView.ActiveIndicator</item>
+        <item name="itemTextColor">@color/fm_nav_item_color</item>
+        <item name="itemIconTint">@color/fm_nav_item_color</item>
+        <item name="itemTextAppearanceActive">@style/TextAppearance.FinMon.Label.Small</item>
+        <item name="itemTextAppearanceInactive">@style/TextAppearance.FinMon.Label.Small</item>
+    </style>
+</resources>

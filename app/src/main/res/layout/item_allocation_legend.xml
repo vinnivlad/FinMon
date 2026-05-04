@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Single legend row under the Allocation pie. 3-column grid (swatch · label/sub
+    block · pct/value block) with a hairline rule at the bottom of each row.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingVertical="10dp"
+        android:baselineAligned="false"
+        android:gravity="center_vertical">
+
+        <View
+            android:id="@+id/legendSwatch"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            tools:background="@color/fm_alloc_1" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/legendLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.FinMon.Title.Medium"
+                android:textFontWeight="600"
+                android:singleLine="true"
+                android:ellipsize="end"
+                tools:text="US Equity" />
+
+            <TextView
+                android:id="@+id/legendSubLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                android:layout_marginTop="1dp"
+                tools:text="STOCK · 1 POS" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="end">
+
+            <TextView
+                android:id="@+id/legendPct"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+                android:textSize="13sp"
+                android:gravity="end"
+                tools:text="38.6%" />
+
+            <TextView
+                android:id="@+id/legendValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.FinMon.Mono.Small"
+                android:textSize="10sp"
+                android:gravity="end"
+                android:layout_marginTop="1dp"
+                tools:text="51,525" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/fm_rule_hairline"
+        android:background="?attr/colorOutlineVariant" />
+</LinearLayout>

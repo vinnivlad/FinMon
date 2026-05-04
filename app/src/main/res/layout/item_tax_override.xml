@@ -1,18 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+    Tax-override row (editorial). No card wrapper; the row sits flat on the
+    surface with a hairline divider drawn beneath. Left column is the asset
+    identity (serif ticker · Inter caps subtitle); right column is the editable
+    rate field. Adapter draws the divider via DividerItemDecoration.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="8dp"
-    app:cardCornerRadius="12dp">
+    android:orientation="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:padding="16dp">
+        android:paddingVertical="10dp">
 
         <LinearLayout
             android:layout_width="0dp"
@@ -24,23 +29,25 @@
                 android:id="@+id/ticker"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textAppearance="@style/TextAppearance.FinMon.Title.Medium"
+                android:textFontWeight="700"
                 tools:text="VOO · USD" />
 
             <TextView
                 android:id="@+id/subtitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceBodySmall"
-                android:alpha="0.7"
-                tools:text="STOCK · default 15%" />
+                android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                android:layout_marginTop="2dp"
+                tools:text="STOCK · DEFAULT 15%" />
         </LinearLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/rateLayout"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-            android:layout_width="120dp"
+            style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
+            android:layout_width="100dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
             app:suffixText="@string/tax_overrides_field_hint">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -49,7 +56,13 @@
                 android:layout_height="wrap_content"
                 android:inputType="numberDecimal"
                 android:imeOptions="actionDone"
+                android:gravity="end"
                 tools:text="15" />
         </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
-</com.google.android.material.card.MaterialCardView>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/fm_rule_hairline"
+        android:background="?attr/colorOutlineVariant" />
+</LinearLayout>

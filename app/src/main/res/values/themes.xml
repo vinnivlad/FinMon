@@ -1,9 +1,88 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.FinMon" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/md_theme_primary</item>
-        <item name="colorOnPrimary">@color/md_theme_onPrimary</item>
-        <item name="colorSecondary">@color/md_theme_secondary</item>
-        <item name="colorOnSecondary">@color/md_theme_onSecondary</item>
-        <item name="android:statusBarColor">?attr/colorPrimary</item>
+
+    <!--
+        FinMon Editorial theme — LIGHT.
+        Cream-on-cream Material 3 derivative. Dark variant in values-night/themes.xml
+        ("Cool Charcoal"). Color tokens flip via @color/fm_* values overridden in
+        values-night/colors.xml; this theme stays palette-agnostic on those refs.
+    -->
+    <style name="Theme.FinMon" parent="Theme.Material3.Light.NoActionBar">
+
+        <!-- ===== Color roles ===== -->
+        <item name="colorPrimary">@color/fm_accent</item>
+        <item name="colorOnPrimary">@color/fm_bg</item>
+        <item name="colorPrimaryContainer">@color/fm_accent_soft</item>
+        <item name="colorOnPrimaryContainer">@color/fm_ink</item>
+
+        <item name="colorSecondary">@color/fm_ink_soft</item>
+        <item name="colorOnSecondary">@color/fm_bg</item>
+        <item name="colorSecondaryContainer">@color/fm_rule</item>
+        <item name="colorOnSecondaryContainer">@color/fm_ink</item>
+
+        <!--
+            Window/page surface = bg (cream); cards/fields/buttons sit on bg_raised
+            (white) so they lift without elevation. windowBackground inherits
+            from colorBackground per Material defaults.
+        -->
+        <item name="android:colorBackground">@color/fm_bg</item>
+        <item name="colorOnBackground">@color/fm_ink</item>
+        <item name="colorSurface">@color/fm_bg_raised</item>
+        <item name="colorOnSurface">@color/fm_ink</item>
+        <item name="colorSurfaceVariant">@color/fm_bg</item>
+        <item name="colorOnSurfaceVariant">@color/fm_ink_soft</item>
+        <item name="android:windowBackground">@color/fm_bg</item>
+
+        <item name="colorOutline">@color/fm_rule_strong</item>
+        <item name="colorOutlineVariant">@color/fm_rule</item>
+
+        <item name="colorError">@color/fm_pnl_down</item>
+        <item name="colorOnError">@color/fm_bg</item>
+
+        <!-- Cream/charcoal surfaces should not pick up Material's elevation overlay -->
+        <item name="elevationOverlayEnabled">false</item>
+
+        <!-- ===== System bars ===== -->
+        <item name="android:statusBarColor">@color/fm_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">@color/fm_bg</item>
+        <item name="android:windowLightNavigationBar">true</item>
+
+        <!--
+            ===== Typography =====
+            Each TextAppearance.FinMon.* below carries its own fontFamily
+            (Source Serif 4 for display/title/body, Inter for labels/chips/kickers,
+            JetBrains Mono for numbers). Setting a theme-level fontFamily here
+            silently overrode TextAppearance + view-level android:fontFamily on
+            Android 16 / Material 3 — every TextView rendered serif regardless.
+            Leave the theme fontFamily-agnostic; let TextAppearance drive.
+        -->
+        <item name="textAppearanceDisplayLarge">@style/TextAppearance.FinMon.Display.Headline</item>
+        <item name="textAppearanceDisplayMedium">@style/TextAppearance.FinMon.Display.Large</item>
+        <item name="textAppearanceDisplaySmall">@style/TextAppearance.FinMon.Display.Medium</item>
+
+        <item name="textAppearanceHeadlineLarge">@style/TextAppearance.FinMon.Display.Large</item>
+        <item name="textAppearanceHeadlineMedium">@style/TextAppearance.FinMon.Display.Medium</item>
+        <item name="textAppearanceHeadlineSmall">@style/TextAppearance.FinMon.Display.Small</item>
+
+        <item name="textAppearanceTitleLarge">@style/TextAppearance.FinMon.Title.Large</item>
+        <item name="textAppearanceTitleMedium">@style/TextAppearance.FinMon.Title.Medium</item>
+        <item name="textAppearanceTitleSmall">@style/TextAppearance.FinMon.Title.Small</item>
+
+        <item name="textAppearanceBodyLarge">@style/TextAppearance.FinMon.Body.Medium</item>
+        <item name="textAppearanceBodyMedium">@style/TextAppearance.FinMon.Body.Medium</item>
+        <item name="textAppearanceBodySmall">@style/TextAppearance.FinMon.Body.Small</item>
+
+        <item name="textAppearanceLabelLarge">@style/TextAppearance.FinMon.Label.Large</item>
+        <item name="textAppearanceLabelMedium">@style/TextAppearance.FinMon.Label.Medium</item>
+        <item name="textAppearanceLabelSmall">@style/TextAppearance.FinMon.Label.Small</item>
+
+        <!-- ===== Component defaults (auto-apply without per-layout style="…") ===== -->
+        <item name="bottomNavigationStyle">@style/Widget.FinMon.BottomNavigationView</item>
+        <item name="tabStyle">@style/Widget.FinMon.TabLayout</item>
+        <item name="chipStyle">@style/Widget.FinMon.Chip.Filter</item>
+        <!-- Auto-apply editorial palette to every MaterialAlertDialogBuilder. Without
+             this overlay, M3 derives surfaceContainer* from a tonal palette and the
+             dialog renders with a purple wash whenever colorPrimary is overridden. -->
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.FinMon.AlertDialog</item>
     </style>
 </resources>

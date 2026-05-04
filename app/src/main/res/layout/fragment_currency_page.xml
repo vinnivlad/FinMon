@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Currency-page body — editorial direction (mirrors Portfolio totals styling, but
+    per-currency / native, no FX cross-conversion).
+      ▸ Bucket section: 2 dp ink top rule, 28×4 accent stripe, kicker, headline split
+        number (integer + fraction + currency-code kicker), hairline, Invested + P&L,
+        hairline, three breakdown rows (Dividends / Realized / Unrealized), bottom rule.
+      ▸ Trade-row RecyclerView. Hairline divider drawn by DividerItemDecoration.
+-->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -6,117 +14,202 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/bucketCard"
-        android:layout_width="match_parent"
+    <!-- ===== Bucket totals section ===== -->
+    <LinearLayout
+        android:id="@+id/bucketSection"
+        android:orientation="vertical"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="16dp"
+        android:layout_marginHorizontal="@dimen/fm_page_padding_h"
         android:layout_marginTop="12dp"
-        android:layout_marginBottom="8dp"
-        app:cardCornerRadius="12dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <LinearLayout
+        <View
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
+            android:layout_height="@dimen/fm_rule_strong"
+            android:background="?attr/colorOutline" />
 
-            <TextView
-                android:id="@+id/bucketValue"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceHeadlineMedium"
-                tools:text="12,345.67 USD" />
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
 
-            <TextView
-                android:id="@+id/bucketInvested"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceBodyMedium"
-                android:alpha="0.8"
-                android:layout_marginTop="8dp"
-                tools:text="Invested: 10,000.00 USD" />
-
-            <TextView
-                android:id="@+id/bucketPnl"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceTitleMedium"
-                android:textStyle="bold"
-                android:layout_marginTop="4dp"
-                tools:text="+2,345.67 USD (+23.5%)"
-                tools:textColor="@color/pnl_positive" />
-
+            <!-- Accent stripe: 28×4, top-start, kisses the top rule -->
             <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="8dp"
-                android:background="?attr/colorOutlineVariant" />
+                android:layout_width="28dp"
+                android:layout_height="4dp"
+                android:layout_gravity="top|start"
+                android:background="?attr/colorPrimary" />
 
-            <TableLayout
+            <LinearLayout
+                android:orientation="vertical"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:stretchColumns="1">
+                android:paddingHorizontal="4dp"
+                android:paddingTop="14dp"
+                android:paddingBottom="14dp">
 
-                <TableRow>
+                <TextView
+                    android:id="@+id/bucketKicker"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                    tools:text="USD bucket · native" />
+
+                <!-- Headline: integer + fraction + currency code -->
+                <LinearLayout
+                    android:orientation="horizontal"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:baselineAligned="true"
+                    android:layout_marginTop="4dp">
+
                     <TextView
+                        android:id="@+id/bucketValueInteger"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:alpha="0.8"
-                        android:text="@string/breakdown_label_dividends" />
+                        android:textAppearance="@style/TextAppearance.FinMon.Display.Headline"
+                        android:textFontWeight="500"
+                        android:letterSpacing="-0.025"
+                        tools:text="52,521" />
+
+                    <TextView
+                        android:id="@+id/bucketValueFraction"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/TextAppearance.FinMon.Display.Small"
+                        android:textColor="@color/fm_ink_soft"
+                        android:layout_marginStart="2dp"
+                        tools:text=".83" />
+
+                    <TextView
+                        android:id="@+id/bucketValueCurrency"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                        android:layout_marginStart="8dp"
+                        android:layout_gravity="bottom"
+                        android:layout_marginBottom="6dp"
+                        tools:text="USD" />
+                </LinearLayout>
+
+                <!-- Internal hairline rule -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/fm_rule_hairline"
+                    android:layout_marginTop="10dp"
+                    android:background="?attr/colorOutlineVariant" />
+
+                <!-- Invested + Period P&L row -->
+                <LinearLayout
+                    android:orientation="horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:baselineAligned="true">
+
+                    <TextView
+                        android:id="@+id/bucketInvested"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Small"
+                        tools:text="Invested 37,592.20 USD" />
+
+                    <TextView
+                        android:id="@+id/bucketPnl"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+                        tools:text="▲ +2,857.65 (+7.6%)"
+                        tools:textColor="@color/pnl_positive" />
+                </LinearLayout>
+
+                <!-- Internal hairline rule before breakdown -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/fm_rule_hairline"
+                    android:layout_marginTop="10dp"
+                    android:background="?attr/colorOutlineVariant" />
+
+                <!-- Breakdown rows: label (Inter caps) ←→ value (Mono colored) -->
+                <LinearLayout
+                    android:orientation="horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:baselineAligned="true">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/breakdown_label_dividends"
+                        android:textAppearance="@style/TextAppearance.FinMon.Label.Small" />
+
                     <TextView
                         android:id="@+id/bucketDividends"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:gravity="end"
-                        tools:text="+45.00 USD"
+                        android:textAppearance="@style/TextAppearance.FinMon.Mono.Small"
+                        tools:text="+241.53 USD"
                         tools:textColor="@color/pnl_positive" />
-                </TableRow>
+                </LinearLayout>
 
-                <TableRow android:layout_marginTop="2dp">
+                <LinearLayout
+                    android:orientation="horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:baselineAligned="true">
+
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:alpha="0.8"
-                        android:text="@string/breakdown_label_realized" />
+                        android:layout_weight="1"
+                        android:text="@string/breakdown_label_realized"
+                        android:textAppearance="@style/TextAppearance.FinMon.Label.Small" />
+
                     <TextView
                         android:id="@+id/bucketRealized"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:gravity="end"
-                        tools:text="+200.00 USD"
-                        tools:textColor="@color/pnl_positive" />
-                </TableRow>
+                        android:textAppearance="@style/TextAppearance.FinMon.Mono.Small"
+                        tools:text="+0.00 USD"
+                        tools:textColor="@color/pnl_neutral" />
+                </LinearLayout>
 
-                <TableRow android:layout_marginTop="2dp">
+                <LinearLayout
+                    android:orientation="horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:baselineAligned="true">
+
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:alpha="0.8"
-                        android:text="@string/breakdown_label_unrealized" />
+                        android:layout_weight="1"
+                        android:text="@string/breakdown_label_unrealized"
+                        android:textAppearance="@style/TextAppearance.FinMon.Label.Small" />
+
                     <TextView
                         android:id="@+id/bucketUnrealized"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:gravity="end"
-                        tools:text="+2,100.67 USD"
+                        android:textAppearance="@style/TextAppearance.FinMon.Mono.Small"
+                        tools:text="+2,616.12 USD"
                         tools:textColor="@color/pnl_positive" />
-                </TableRow>
+                </LinearLayout>
+            </LinearLayout>
+        </FrameLayout>
 
-            </TableLayout>
-
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/fm_rule_hairline"
+            android:background="?attr/colorOutlineVariant" />
+    </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rowList"
@@ -124,7 +217,7 @@
         android:layout_height="0dp"
         android:clipToPadding="false"
         android:paddingBottom="12dp"
-        app:layout_constraintTop_toBottomOf="@id/bucketCard"
+        app:layout_constraintTop_toBottomOf="@id/bucketSection"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -134,8 +227,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/breakdown_page_empty"
-        android:textAppearance="?attr/textAppearanceBodyMedium"
-        android:alpha="0.7"
+        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
         android:textAlignment="center"
         android:padding="32dp"
         android:visibility="gone"

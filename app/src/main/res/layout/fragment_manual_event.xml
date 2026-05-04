@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Manual event (editorial). Top: italic body explaining the screen's purpose.
+    "Kind" accent kicker over the chip group selecting INCOME / MATURITY / SPLIT.
+    Body fields swap depending on kind. Save button is the editorial Save.
+-->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -10,27 +15,54 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:paddingHorizontal="@dimen/fm_page_padding_h"
+        android:paddingTop="12dp"
+        android:paddingBottom="32dp">
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/manual_event_help"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:alpha="0.7"
-            android:layout_marginBottom="16dp" />
+            android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+            android:textSize="13sp"
+            android:layout_marginBottom="14dp" />
+
+        <!-- KIND accent kicker. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="6dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/manual_event_section_kind"
+                android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                android:textColor="@color/fm_accent"
+                android:textFontWeight="700" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:background="?attr/colorOutlineVariant" />
+        </LinearLayout>
 
         <com.google.android.material.chip.ChipGroup
             android:id="@+id/kindChips"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
+            android:layout_marginBottom="14dp"
+            app:chipSpacingHorizontal="6dp"
             app:singleSelection="true"
             app:selectionRequired="true">
 
             <com.google.android.material.chip.Chip
                 android:id="@+id/kindChipIncome"
-                style="@style/Widget.Material3.Chip.Filter"
+                style="@style/Widget.FinMon.Chip.Filter"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:checked="true"
@@ -38,14 +70,14 @@
 
             <com.google.android.material.chip.Chip
                 android:id="@+id/kindChipMaturity"
-                style="@style/Widget.Material3.Chip.Filter"
+                style="@style/Widget.FinMon.Chip.Filter"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/manual_event_kind_maturity" />
 
             <com.google.android.material.chip.Chip
                 android:id="@+id/kindChipSplit"
-                style="@style/Widget.Material3.Chip.Filter"
+                style="@style/Widget.FinMon.Chip.Filter"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/manual_event_kind_split" />
@@ -53,7 +85,7 @@
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/assetLayout"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+            style="@style/Widget.FinMon.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="@string/manual_event_field_asset">
@@ -71,13 +103,14 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/manual_event_no_assets"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:alpha="0.7"
-            android:layout_marginTop="4dp"
+            android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+            android:textSize="12sp"
+            android:layout_marginTop="6dp"
             android:visibility="gone" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/amountLayout"
+            style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
@@ -95,12 +128,13 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/manual_event_amount_help"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:alpha="0.7"
-            android:layout_marginTop="2dp" />
+            android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+            android:textSize="12sp"
+            android:layout_marginTop="4dp" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/ratioLayout"
+            style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
@@ -119,16 +153,20 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/manual_event_ratio_help"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:alpha="0.7"
-            android:layout_marginTop="2dp"
+            android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+            android:textSize="12sp"
+            android:layout_marginTop="4dp"
             android:visibility="gone" />
 
+        <!-- Redemption-mode preview. Mono so the computed cash reads as a number,
+             not as prose. -->
         <TextView
             android:id="@+id/redemptionPreview"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textAppearance="@style/TextAppearance.FinMon.Mono.Small"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnBackground"
             android:layout_marginTop="12dp"
             android:visibility="gone"
             tools:text="Cash returned: 10,000.00 UAH (face 1,000.00 × 10)"
@@ -136,6 +174,7 @@
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/payDateLayout"
+            style="@style/Widget.FinMon.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
@@ -152,6 +191,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/saveButton"
+            style="@style/Widget.FinMon.Button.Save"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"

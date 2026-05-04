@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Tiny dot under the day number signaling "this date has a bond payment". -->
+<!-- Editorial accent dot under the day number. Warm-orange so it pops over
+     cream without competing with the ink-color today ring. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
-    <solid android:color="?attr/colorPrimary" />
+    <solid android:color="@color/fm_accent" />
 </shape>

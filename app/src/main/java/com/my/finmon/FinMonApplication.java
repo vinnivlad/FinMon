@@ -2,8 +2,11 @@ package com.my.finmon;
 
 import android.app.Application;
 
+import androidx.appcompat.app.AppCompatDelegate;
+
 import com.my.finmon.data.FinMonDatabase;
 import com.my.finmon.devtools.DevSeeder;
+import com.my.finmon.security.AppLockState;
 import com.my.finmon.sync.PortfolioSyncWorker;
 
 /**
@@ -39,6 +42,17 @@ public final class FinMonApplication extends Application {
         }
 
         ServiceLocator sl = ServiceLocator.get(this);
+
+        // Apply the user's theme choice before any Activity inflates so the right
+        // light/dark variant is picked from frame 0. Must run before super-class
+        // continues bringing up activities (we're in onCreate already; this just
+        // races the first onCreate of MainActivity).
+        AppCompatDelegate.setDefaultNightMode(
+                sl.userPreferences().getThemeMode().delegateMode());
+
+        // Process-level unlock state — persists across activity recreations (theme
+        // switch, rotation, locale change) and resets only on real backgrounding.
+        AppLockState.install();
 
         // Periodic background sync — separate from the foreground startup sync below.
         PortfolioSyncWorker.schedule(this);

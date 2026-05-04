@@ -73,8 +73,12 @@ public class PortfolioFragment extends Fragment {
         holdingsAdapter = new HoldingsAdapter();
         binding.holdingsList.setLayoutManager(new LinearLayoutManager(requireContext()));
         binding.holdingsList.setAdapter(holdingsAdapter);
-        binding.holdingsList.addItemDecoration(
-                new DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL));
+        DividerItemDecoration divider = new DividerItemDecoration(
+                requireContext(), DividerItemDecoration.VERTICAL);
+        android.graphics.drawable.Drawable hairline = androidx.core.content.ContextCompat
+                .getDrawable(requireContext(), R.drawable.fm_row_divider);
+        if (hairline != null) divider.setDrawable(hairline);
+        binding.holdingsList.addItemDecoration(divider);
 
         viewModel.windowedHoldings().observe(getViewLifecycleOwner(), this::renderHoldings);
         viewModel.totalsCard().observe(getViewLifecycleOwner(), this::renderTotalsCard);
@@ -140,21 +144,42 @@ public class PortfolioFragment extends Fragment {
             // currency code when the asset has no name yet.
             String suffix = cashHolding.holding.asset.name;
             if (suffix == null || suffix.isBlank()) suffix = c.name();
-            sb.append(MONEY.format(balance)).append(' ').append(suffix);
+            // Symbol first (e.g. "$ 996.59") to match the editorial cash-bar layout.
+            sb.append(suffix).append(' ').append(MONEY.format(balance));
         }
         if (sb.length() == 0) {
-            binding.cashBar.setVisibility(View.GONE);
+            binding.cashBarContainer.setVisibility(View.GONE);
         } else {
             binding.cashBar.setText(sb.toString());
-            binding.cashBar.setVisibility(View.VISIBLE);
+            binding.cashBarContainer.setVisibility(View.VISIBLE);
         }
+    }
+
+    /**
+     * Render a money value into the editorial split-headline form: large serif integer,
+     * smaller serif decimal fraction, Inter-caps currency code on the side.
+     */
+    private void renderHeadlineSplit(@NonNull BigDecimal amount, @NonNull Currency ccy) {
+        String formatted = MONEY.format(amount);
+        int dot = formatted.lastIndexOf('.');
+        String intPart;
+        String fracPart;
+        if (dot >= 0) {
+            intPart = formatted.substring(0, dot);
+            fracPart = formatted.substring(dot);
+        } else {
+            intPart = formatted;
+            fracPart = "";
+        }
+        binding.totalAmountInteger.setText(intPart);
+        binding.totalAmountFraction.setText(fracPart);
+        binding.totalAmountCurrency.setText(ccy.name());
     }
 
     private void renderTotalsCard(@Nullable TotalsCardData d) {
         if (binding == null || d == null) return;
 
-        String ccy = d.currency.name();
-        binding.totalAmount.setText(MONEY.format(d.valueEnd) + " " + ccy);
+        renderHeadlineSplit(d.valueEnd, d.currency);
 
         if (d.ribbon.isEmpty()) {
             binding.totalDisplayEquivalents.setVisibility(View.GONE);
@@ -168,16 +193,18 @@ public class PortfolioFragment extends Fragment {
             binding.totalDisplayEquivalents.setVisibility(View.VISIBLE);
         }
 
+        // Invested label: lower-case "Invested" + mono value, no colon (editorial).
         binding.totalInvested.setText(getString(
                 R.string.totals_invested_label,
-                MONEY.format(d.investedEnd) + " " + ccy));
+                MONEY.format(d.investedEnd) + " " + d.currency.name()));
 
+        // P&L: arrow glyph + signed amount + percent — colored by sign.
+        String arrow = d.periodPnl.signum() > 0
+                ? getString(R.string.arrow_up)
+                : (d.periodPnl.signum() < 0 ? getString(R.string.arrow_down) : "");
         StringBuilder pnlText = new StringBuilder();
-        pnlText.append(getString(R.string.chart_period_pnl_label))
-                .append(": ")
-                .append(SIGNED_MONEY.format(d.periodPnl))
-                .append(' ')
-                .append(ccy);
+        if (!arrow.isEmpty()) pnlText.append(arrow).append(' ');
+        pnlText.append(SIGNED_MONEY.format(d.periodPnl));
         if (d.periodPnlPct != null) {
             pnlText.append(" (").append(PCT.format(d.periodPnlPct)).append(')');
         }

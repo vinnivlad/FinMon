@@ -152,7 +152,7 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
         final TextView ticker;
         final TextView typeCurrency;
         final TextView primaryValue;
-        final TextView subValue;
+        final TextView primaryValueCcy;
         final TextView pnl;
         final TextView breakdownLine;
 
@@ -161,7 +161,7 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
             ticker = v.findViewById(R.id.ticker);
             typeCurrency = v.findViewById(R.id.typeCurrency);
             primaryValue = v.findViewById(R.id.primaryValue);
-            subValue = v.findViewById(R.id.subValue);
+            primaryValueCcy = v.findViewById(R.id.primaryValueCcy);
             pnl = v.findViewById(R.id.pnl);
             breakdownLine = v.findViewById(R.id.breakdownLine);
         }
@@ -170,41 +170,40 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
             Holding h = wh.holding;
             AssetEntity a = h.asset;
             ticker.setText(a.ticker);
-            typeCurrency.setText(a.type.name() + " · " + a.currency.name());
             String ccy = a.currency.name();
+            primaryValueCcy.setText(ccy);
+            primaryValueCcy.setVisibility(View.VISIBLE);
 
             if (a.type == AssetType.CASH) {
-                primaryValue.setText(MONEY.format(h.quantity) + " " + ccy);
-                subValue.setVisibility(View.GONE);
+                primaryValue.setText(MONEY.format(h.quantity));
+                typeCurrency.setText(a.type.name() + " · " + ccy);
                 pnl.setVisibility(View.GONE);
                 breakdownLine.setVisibility(View.GONE);
                 return;
             }
 
             if (h.marketValue != null) {
-                primaryValue.setText(MONEY.format(h.marketValue) + " " + ccy);
+                primaryValue.setText(MONEY.format(h.marketValue));
             } else {
                 primaryValue.setText(QTY.format(h.quantity));
             }
 
-            if (h.openCostBasis != null) {
-                StringBuilder sub = new StringBuilder()
+            // Editorial row 2 left: kind kicker · ccy · qty @ avg
+            // Average unit cost across open lots — openCostBasis already sums
+            // (lot.qty × lot.unitPrice), so dividing by open quantity gives
+            // weighted average per unit. Skip when qty is zero.
+            StringBuilder kindLine = new StringBuilder()
+                    .append(a.type.name())
+                    .append(" · ")
+                    .append(ccy);
+            if (h.openCostBasis != null && h.quantity.signum() != 0) {
+                BigDecimal avg = h.openCostBasis.divide(h.quantity, AVG_MC);
+                kindLine.append("  ·  ")
                         .append(QTY.format(h.quantity))
-                        .append(" · cost ")
-                        .append(MONEY.format(h.openCostBasis));
-                // Average unit cost across the asset's open lots — openCostBasis
-                // already sums (lot.qty × lot.unitPrice), so dividing by the open
-                // quantity gives a weighted average per unit. Skip when qty is zero
-                // (we shouldn't reach this branch then, but guard anyway).
-                if (h.quantity.signum() != 0) {
-                    BigDecimal avg = h.openCostBasis.divide(h.quantity, AVG_MC);
-                    sub.append(" · avg ").append(MONEY.format(avg));
-                }
-                subValue.setText(sub.toString());
-                subValue.setVisibility(View.VISIBLE);
-            } else {
-                subValue.setVisibility(View.GONE);
+                        .append(" @ ")
+                        .append(MONEY.format(avg));
             }
+            typeCurrency.setText(kindLine.toString());
 
             // Window-scoped P&L from the aggregated TradeRows. % base is the open
             // cost basis for non-zero positions; matches what each lot's TradeRow
@@ -213,7 +212,7 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
             BigDecimal pctBase = h.openCostBasis;
             if (pctBase != null && pctBase.signum() != 0) {
                 BigDecimal pct = totalPnl.divide(pctBase, PCT_MC).multiply(new BigDecimal("100"));
-                pnl.setText(SIGNED_MONEY.format(totalPnl) + " (" + PCT.format(pct) + ")");
+                pnl.setText(SIGNED_MONEY.format(totalPnl) + "  " + PCT.format(pct));
             } else {
                 pnl.setText(SIGNED_MONEY.format(totalPnl));
             }

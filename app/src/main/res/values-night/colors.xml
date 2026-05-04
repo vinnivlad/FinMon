@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        FinMon Editorial palette — DARK mode (FM_DARK · "Cool Charcoal").
+        Source: app/design/design_handoff_finmon_editorial/README.md + finmon-shared.jsx
+        Overrides every fm_* token from values/colors.xml so layouts and theme
+        attrs auto-flip when the system is in night mode.
+    -->
+
+    <!-- Charcoal surface + raised layer + ink text -->
+    <color name="fm_bg">#101216</color>
+    <color name="fm_bg_raised">#181B20</color>
+    <color name="fm_ink">#E6E8EC</color>
+    <color name="fm_ink_soft">#B0B7C0</color>
+    <color name="fm_ink_mute">#7A8290</color>
+
+    <!-- Rules / dividers -->
+    <color name="fm_rule">#262A30</color>
+    <color name="fm_rule_strong">#E6E8EC</color>
+
+    <!-- Brand accent (M3 dark seed) -->
+    <color name="fm_accent">#7DD2E3</color>
+    <color name="fm_accent_soft">#3A6E78</color>
+
+    <!-- P&L (muted for dark backgrounds) -->
+    <color name="fm_pnl_up">#5BC97A</color>
+    <color name="fm_pnl_down">#FF6B6B</color>
+
+    <!-- Filter chips — invert in dark -->
+    <color name="fm_chip_bg_selected">#E6E8EC</color>
+    <color name="fm_chip_text_selected">#101216</color>
+    <color name="fm_chip_text_idle">#9BA3AE</color>
+    <color name="fm_chip_border_idle">#363B43</color>
+
+    <!-- Allocation palette — same warm/cool alternation as light mode, lifted in
+         brightness so slices stay legible on charcoal without flattening. -->
+    <color name="fm_alloc_1">#D17A4E</color>
+    <color name="fm_alloc_2">#8FAE74</color>
+    <color name="fm_alloc_3">#E0BF6D</color>
+    <color name="fm_alloc_4">#6B97AC</color>
+    <color name="fm_alloc_5">#D88B6A</color>
+    <color name="fm_alloc_6">#A088B5</color>
+
+    <!-- Legacy aliases mirroring fm_pnl_* -->
+    <color name="pnl_positive">#5BC97A</color>
+    <color name="pnl_negative">#FF6B6B</color>
+    <color name="pnl_neutral">#5F6772</color>
+</resources>

@@ -11,21 +11,20 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
-import com.github.mikephil.charting.components.Legend;
-import com.github.mikephil.charting.components.XAxis;
-import com.github.mikephil.charting.components.YAxis;
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.ValueFormatter;
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet;
 import com.my.finmon.R;
+import com.my.finmon.data.model.Currency;
 import com.my.finmon.databinding.FragmentValueChartBinding;
 import com.my.finmon.ui.charts.ValueChartViewModel.ChartData;
 import com.my.finmon.ui.charts.ValueChartViewModel.PeriodTotals;
 import com.my.finmon.ui.charts.ValueChartViewModel.Point;
 import com.my.finmon.ui.filter.GlobalFilterViewModel;
 
+import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.time.LocalDate;
@@ -41,8 +40,13 @@ public class ValueChartPageFragment extends Fragment {
     private ValueChartViewModel viewModel;
 
     private static final DateTimeFormatter X_LABEL_FMT = DateTimeFormatter.ofPattern("MMM d");
+    private static final DateTimeFormatter MONTH_YEAR_FMT =
+            DateTimeFormatter.ofPattern("MMM yyyy");
+    private static final DateTimeFormatter MONTH_FMT = DateTimeFormatter.ofPattern("MMM");
 
     private static final DecimalFormat MONEY = buildFormat("#,##0.00");
+    private static final DecimalFormat WHOLE = buildFormat("#,##0");
+    private static final DecimalFormat SIGNED_WHOLE = buildFormat("+#,##0;-#,##0");
     private static final DecimalFormat SIGNED_MONEY = buildFormat("+#,##0.00;-#,##0.00");
     private static final DecimalFormat SIGNED_PCT = buildFormat("+0.0'%';-0.0'%'");
 
@@ -66,7 +70,10 @@ public class ValueChartPageFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        configureChart();
+        MpAndroidEditorial.applyLineChart(binding.chart);
+        binding.chart.setPinchZoom(true);
+        binding.chart.setDragEnabled(true);
+        binding.chart.setScaleEnabled(true);
 
         GlobalFilterViewModel globalFilter = new ViewModelProvider(
                 requireActivity(), GlobalFilterViewModel.factory(requireContext()))
@@ -91,35 +98,13 @@ public class ValueChartPageFragment extends Fragment {
         binding = null;
     }
 
-    private void configureChart() {
-        binding.chart.getDescription().setEnabled(false);
-        binding.chart.setNoDataText("");
-        binding.chart.setPinchZoom(true);
-        binding.chart.setDragEnabled(true);
-        binding.chart.setScaleEnabled(true);
-
-        XAxis x = binding.chart.getXAxis();
-        x.setPosition(XAxis.XAxisPosition.BOTTOM);
-        x.setDrawGridLines(false);
-        x.setGranularity(1f);
-
-        binding.chart.getAxisRight().setEnabled(false);
-        YAxis y = binding.chart.getAxisLeft();
-        y.setDrawGridLines(true);
-
-        Legend legend = binding.chart.getLegend();
-        legend.setVerticalAlignment(Legend.LegendVerticalAlignment.BOTTOM);
-        legend.setHorizontalAlignment(Legend.LegendHorizontalAlignment.LEFT);
-        legend.setOrientation(Legend.LegendOrientation.HORIZONTAL);
-        legend.setDrawInside(false);
-    }
-
     private void render(@Nullable ChartData cd) {
         boolean empty = (cd == null || cd.points.isEmpty());
         binding.emptyState.setVisibility(empty ? View.VISIBLE : View.GONE);
         binding.fxGapHint.setVisibility(cd != null && cd.hasAnyGaps ? View.VISIBLE : View.GONE);
 
         renderTotalsCard(cd);
+        renderReadoutStrip(cd);
 
         if (empty) {
             binding.chart.clear();
@@ -146,7 +131,7 @@ public class ValueChartPageFragment extends Fragment {
             if (i > maxY) maxY = i;
             int color = p.hasFxGaps
                     ? ContextCompat.getColor(requireContext(), R.color.pnl_negative)
-                    : ContextCompat.getColor(requireContext(), R.color.pnl_neutral);
+                    : ContextCompat.getColor(requireContext(), R.color.fm_ink_mute);
             circleColors.add(color);
         }
 
@@ -155,33 +140,46 @@ public class ValueChartPageFragment extends Fragment {
         binding.chart.getAxisLeft().setAxisMinimum(minY - pad);
         binding.chart.getAxisLeft().setAxisMaximum(maxY + pad);
 
-        int valueColor = ContextCompat.getColor(requireContext(), R.color.pnl_positive);
-        int investedColor = ContextCompat.getColor(requireContext(), R.color.pnl_neutral);
+        // Editorial palette: Value line in fm_accent (teal), Invested in fm_ink_mute
+        // dashed. Both are ink-on-cream readable; the dash separates them without
+        // needing a legend.
+        int valueColor = ContextCompat.getColor(requireContext(), R.color.fm_accent);
+        int investedColor = ContextCompat.getColor(requireContext(), R.color.fm_ink_mute);
 
         LineDataSet valueSet = new LineDataSet(valueEntries, getString(R.string.chart_line_value));
         valueSet.setColor(valueColor);
-        valueSet.setLineWidth(2f);
+        valueSet.setLineWidth(1.6f);
         boolean drawCircles = cd.hasAnyGaps || circlesContainGap(circleColors);
         valueSet.setDrawCircles(drawCircles);
-        valueSet.setCircleRadius(3f);
+        valueSet.setCircleRadius(2.5f);
         if (drawCircles) {
             valueSet.setCircleColors(circleColors);
             valueSet.setDrawCircleHole(false);
         }
         valueSet.setDrawValues(false);
         valueSet.setMode(LineDataSet.Mode.LINEAR);
+        // Editorial fill — soft teal area below the value line. Alpha 20/255 ≈ 8 %
+        // (matches the JSX). Fill drops to the chart's bottom by default, which on
+        // an auto-zoomed Y-axis sits just under the data range — visually identical
+        // to the JSX's "fill to baseline" since Y never reaches 0 here.
+        valueSet.setDrawFilled(true);
+        valueSet.setFillColor(valueColor);
+        valueSet.setFillAlpha(20);
 
         LineDataSet investedSet = new LineDataSet(investedEntries, getString(R.string.chart_line_invested));
         investedSet.setColor(investedColor);
-        investedSet.setLineWidth(2f);
+        investedSet.setLineWidth(1.2f);
         investedSet.setDrawCircles(false);
         investedSet.setDrawValues(false);
         investedSet.setMode(LineDataSet.Mode.LINEAR);
-        investedSet.enableDashedLine(12f, 8f, 0f);
+        investedSet.enableDashedLine(8f, 6f, 0f);
 
+        // Render order = list order (last item on top). Value first → its area fill
+        // and stroke sit in the back; Invested dashed line draws on top so it's
+        // never obscured by the fill.
         List<ILineDataSet> sets = new ArrayList<>();
-        sets.add(investedSet);
         sets.add(valueSet);
+        sets.add(investedSet);
 
         binding.chart.getXAxis().setValueFormatter(new ValueFormatter() {
             @Override
@@ -204,26 +202,102 @@ public class ValueChartPageFragment extends Fragment {
         }
         binding.totalsCard.setVisibility(View.VISIBLE);
 
-        String ccy = t.currency.name();
-        binding.totalAmount.setText(MONEY.format(t.valueEnd) + " " + ccy);
+        binding.totalsLabel.setText(getString(
+                R.string.charts_value_kicker_format, periodLabel(cd)));
+
+        renderHeadlineSplit(t.valueEnd, t.currency);
+
+        // Invested line: lower-case "Invested" + mono value, mirror of Portfolio.
         binding.totalInvested.setText(getString(
                 R.string.totals_invested_label,
-                MONEY.format(t.investedEnd) + " " + ccy));
+                MONEY.format(t.investedEnd) + " " + t.currency.name()));
 
-        StringBuilder pnl = new StringBuilder();
-        pnl.append(getString(R.string.chart_period_pnl_label))
-                .append(": ")
-                .append(SIGNED_MONEY.format(t.periodPnl))
-                .append(' ')
-                .append(ccy);
+        // P&L: arrow glyph + signed amount + percent — colored by sign.
+        String arrow = t.periodPnl.signum() > 0
+                ? getString(R.string.arrow_up)
+                : (t.periodPnl.signum() < 0 ? getString(R.string.arrow_down) : "");
+        StringBuilder pnlText = new StringBuilder();
+        if (!arrow.isEmpty()) pnlText.append(arrow).append(' ');
+        pnlText.append(SIGNED_MONEY.format(t.periodPnl));
         if (t.periodPnlPct != null) {
-            pnl.append(" (").append(SIGNED_PCT.format(t.periodPnlPct)).append(')');
+            pnlText.append(" (").append(SIGNED_PCT.format(t.periodPnlPct)).append(')');
         }
-        binding.totalPnl.setText(pnl.toString());
+        binding.totalPnl.setText(pnlText.toString());
         int color = t.periodPnl.signum() > 0
                 ? R.color.pnl_positive
                 : (t.periodPnl.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
         binding.totalPnl.setTextColor(ContextCompat.getColor(requireContext(), color));
+    }
+
+    private void renderHeadlineSplit(@NonNull BigDecimal amount, @NonNull Currency ccy) {
+        String formatted = MONEY.format(amount);
+        int dot = formatted.lastIndexOf('.');
+        String intPart;
+        String fracPart;
+        if (dot >= 0) {
+            intPart = formatted.substring(0, dot);
+            fracPart = formatted.substring(dot);
+        } else {
+            intPart = formatted;
+            fracPart = "";
+        }
+        binding.totalAmountInteger.setText(intPart);
+        binding.totalAmountFraction.setText(fracPart);
+        binding.totalAmountCurrency.setText(ccy.name());
+    }
+
+    private void renderReadoutStrip(@Nullable ChartData cd) {
+        if (binding == null) return;
+        if (cd == null || cd.points.size() < 2) {
+            binding.readoutStrip.setVisibility(View.GONE);
+            return;
+        }
+        binding.readoutStrip.setVisibility(View.VISIBLE);
+
+        // Walk once: track high/low (and their dates), plus first/last for delta.
+        Point hi = cd.points.get(0);
+        Point lo = cd.points.get(0);
+        for (Point p : cd.points) {
+            if (p.value.compareTo(hi.value) > 0) hi = p;
+            if (p.value.compareTo(lo.value) < 0) lo = p;
+        }
+        Point first = cd.points.get(0);
+        Point last = cd.points.get(cd.points.size() - 1);
+        BigDecimal delta = last.value.subtract(first.value);
+
+        binding.readoutHighValue.setText(WHOLE.format(hi.value));
+        binding.readoutHighSub.setText(hi.date.format(MONTH_YEAR_FMT));
+
+        binding.readoutLowValue.setText(WHOLE.format(lo.value));
+        binding.readoutLowSub.setText(lo.date.format(MONTH_YEAR_FMT));
+
+        binding.readoutDeltaValue.setText(SIGNED_WHOLE.format(delta));
+        int deltaColor = delta.signum() > 0
+                ? R.color.pnl_positive
+                : (delta.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
+        binding.readoutDeltaValue.setTextColor(
+                ContextCompat.getColor(requireContext(), deltaColor));
+        binding.readoutDeltaSub.setText(getString(
+                R.string.charts_readout_range,
+                first.date.format(MONTH_FMT),
+                last.date.format(MONTH_FMT)));
+    }
+
+    /** Label used inside the totals kicker (e.g. "6m", "Custom range", "All"). */
+    @NonNull
+    private String periodLabel(@NonNull ChartData cd) {
+        if (cd.period == null) return "";
+        switch (cd.period) {
+            case FIVE_DAYS: return getString(R.string.chart_period_5d);
+            case ONE_MONTH: return getString(R.string.chart_period_1m);
+            case SIX_MONTHS: return getString(R.string.chart_period_6m);
+            case YTD: return getString(R.string.chart_period_ytd);
+            case ONE_YEAR: return getString(R.string.chart_period_1y);
+            case FIVE_YEARS: return getString(R.string.chart_period_5y);
+            case CUSTOM: return getString(R.string.chart_period_custom);
+            case ALL_TIME:
+            default: return getString(R.string.chart_period_all);
+        }
     }
 
     private boolean circlesContainGap(@NonNull List<Integer> circleColors) {

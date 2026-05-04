@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Value chart page (Charts → Value tab). Renders the user's portfolio value and
-    invested-capital lines over the global filter's window. Identical to the old
-    standalone Chart screen body.
+    Charts → Value page (editorial).
+    Top: section-without-card totals — top rule, accent stripe, kicker, split
+    headline, internal hairline, Invested/Period P&L row.
+    Middle: line chart (value vs. invested).
+    Bottom: 3-column readout strip (High · Low · Δ Period) framed by hairlines.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -11,83 +13,266 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <com.google.android.material.card.MaterialCardView
+    <!-- ===== Totals section ===== -->
+    <LinearLayout
         android:id="@+id/totalsCard"
-        android:layout_width="match_parent"
+        android:orientation="vertical"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="16dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginHorizontal="@dimen/fm_page_padding_h"
+        android:layout_marginTop="12dp"
         android:visibility="gone"
-        app:cardCornerRadius="12dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         tools:visibility="visible">
 
-        <LinearLayout
+        <View
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
+            android:layout_height="@dimen/fm_rule_strong"
+            android:background="?attr/colorOutline" />
 
-            <TextView
-                android:id="@+id/totalsLabel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/totals_card_label"
-                android:textAppearance="?attr/textAppearanceLabelSmall"
-                android:alpha="0.7"
-                android:textAllCaps="true" />
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
 
-            <TextView
-                android:id="@+id/totalAmount"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceHeadlineMedium"
-                android:layout_marginTop="4dp"
-                tools:text="12,345.67 USD" />
+            <View
+                android:layout_width="28dp"
+                android:layout_height="4dp"
+                android:layout_gravity="top|start"
+                android:background="?attr/colorPrimary" />
 
-            <TextView
-                android:id="@+id/totalInvested"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:orientation="vertical"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceBodyMedium"
-                android:alpha="0.8"
-                android:layout_marginTop="6dp"
-                tools:text="Invested: 10,000.00 USD" />
+                android:paddingHorizontal="4dp"
+                android:paddingTop="14dp"
+                android:paddingBottom="14dp">
 
-            <TextView
-                android:id="@+id/totalPnl"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceTitleMedium"
-                android:textStyle="bold"
-                android:layout_marginTop="4dp"
-                tools:text="Period P&amp;L: +123.45 USD (+1.2%)"
-                tools:textColor="@color/pnl_positive" />
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
+                <TextView
+                    android:id="@+id/totalsLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                    tools:text="PORTFOLIO VALUE · 6m" />
+
+                <LinearLayout
+                    android:orientation="horizontal"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:baselineAligned="true"
+                    android:layout_marginTop="4dp">
+
+                    <TextView
+                        android:id="@+id/totalAmountInteger"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/TextAppearance.FinMon.Display.Headline"
+                        android:textFontWeight="500"
+                        android:letterSpacing="-0.025"
+                        tools:text="136,414" />
+
+                    <TextView
+                        android:id="@+id/totalAmountFraction"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/TextAppearance.FinMon.Display.Small"
+                        android:textColor="@color/fm_ink_soft"
+                        android:layout_marginStart="2dp"
+                        tools:text=".93" />
+
+                    <TextView
+                        android:id="@+id/totalAmountCurrency"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                        android:layout_marginStart="8dp"
+                        android:layout_gravity="bottom"
+                        android:layout_marginBottom="6dp"
+                        tools:text="USD" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/fm_rule_hairline"
+                    android:layout_marginTop="10dp"
+                    android:background="?attr/colorOutlineVariant" />
+
+                <LinearLayout
+                    android:orientation="horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:baselineAligned="true">
+
+                    <TextView
+                        android:id="@+id/totalInvested"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Small"
+                        tools:text="Invested 114,085.56" />
+
+                    <TextView
+                        android:id="@+id/totalPnl"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+                        tools:text="▲ +5,065.86 (+4.5%)"
+                        tools:textColor="@color/pnl_positive" />
+                </LinearLayout>
+            </LinearLayout>
+        </FrameLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/fm_rule_hairline"
+            android:background="?attr/colorOutlineVariant" />
+    </LinearLayout>
 
     <com.github.mikephil.charting.charts.LineChart
         android:id="@+id/chart"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:paddingHorizontal="12dp"
-        android:paddingBottom="12dp"
+        android:paddingHorizontal="8dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
         app:layout_constraintTop_toBottomOf="@id/totalsCard"
-        app:layout_constraintBottom_toTopOf="@id/fxGapHint"
+        app:layout_constraintBottom_toTopOf="@id/readoutStrip"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- ===== Readout strip: High · Low · Δ Period ===== -->
+    <LinearLayout
+        android:id="@+id/readoutStrip"
+        android:orientation="vertical"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="@dimen/fm_page_padding_h"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/fxGapHint"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="visible">
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/fm_rule_hairline"
+            android:background="?attr/colorOutlineVariant" />
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="10dp"
+            android:weightSum="3">
+
+            <LinearLayout
+                android:orientation="vertical"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/charts_readout_high"
+                    android:textAppearance="@style/TextAppearance.FinMon.Kicker" />
+
+                <TextView
+                    android:id="@+id/readoutHighValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+                    android:textSize="13sp"
+                    android:layout_marginTop="2dp"
+                    tools:text="141,201" />
+
+                <TextView
+                    android:id="@+id/readoutHighSub"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.FinMon.Body.Small"
+                    android:layout_marginTop="1dp"
+                    tools:text="Apr 2026" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:orientation="vertical"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/charts_readout_low"
+                    android:textAppearance="@style/TextAppearance.FinMon.Kicker" />
+
+                <TextView
+                    android:id="@+id/readoutLowValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+                    android:textSize="13sp"
+                    android:layout_marginTop="2dp"
+                    tools:text="94,820" />
+
+                <TextView
+                    android:id="@+id/readoutLowSub"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.FinMon.Body.Small"
+                    android:layout_marginTop="1dp"
+                    tools:text="Jun 2024" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:orientation="vertical"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/charts_readout_delta"
+                    android:textAppearance="@style/TextAppearance.FinMon.Kicker" />
+
+                <TextView
+                    android:id="@+id/readoutDeltaValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+                    android:textSize="13sp"
+                    android:layout_marginTop="2dp"
+                    tools:text="+5,066" />
+
+                <TextView
+                    android:id="@+id/readoutDeltaSub"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.FinMon.Body.Small"
+                    android:layout_marginTop="1dp"
+                    tools:text="Nov → May" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/fm_rule_hairline"
+            android:background="?attr/colorOutlineVariant" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/fxGapHint"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/totals_fx_gap_hint"
-        android:textAppearance="?attr/textAppearanceBodySmall"
-        android:alpha="0.7"
-        android:paddingHorizontal="16dp"
-        android:paddingBottom="12dp"
+        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+        android:paddingHorizontal="@dimen/fm_page_padding_h"
+        android:paddingVertical="8dp"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -98,8 +283,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/chart_empty"
-        android:textAppearance="?attr/textAppearanceBodyMedium"
-        android:alpha="0.7"
+        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
         android:textAlignment="center"
         android:padding="32dp"
         android:visibility="gone"

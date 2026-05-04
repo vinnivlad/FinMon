@@ -7,7 +7,9 @@
     <string name="fab_add">Add</string>
     <string name="menu_record_trade">Record trade</string>
     <string name="menu_export_data">Export data</string>
+    <string name="menu_export_data_help">Trades, assets &amp; settings as JSON.</string>
     <string name="menu_import_data">Import data</string>
+    <string name="menu_import_data_help">Replace current dataset from JSON.</string>
     <string name="export_default_filename">finmon-export-%1$s.json</string>
     <string name="export_success">Exported %1$d assets and %2$d events</string>
     <string name="import_success">Imported %1$d assets, %2$d events; enriched %3$d</string>
@@ -50,8 +52,12 @@
 
     <!-- Portfolio totals card -->
     <string name="totals_card_label">Portfolio value</string>
-    <string name="totals_invested_label">Invested: %1$s</string>
+    <string name="totals_invested_label">Invested %1$s</string>
     <string name="totals_fx_gap_hint">Some FX rates missing — figures may be slightly off.</string>
+    <string name="portfolio_holdings_kicker">Holdings</string>
+    <string name="arrow_up">▲</string>
+    <string name="arrow_down">▼</string>
+    <string name="dot_separator">·</string>
 
     <!-- Currency breakdown screen -->
     <string name="breakdown_title">Breakdown</string>
@@ -77,6 +83,12 @@
     <string name="bonds_expected_payments_fx_gap">(some FX missing)</string>
     <string name="bonds_expected_type_coupons">Coupons: %1$s</string>
     <string name="bonds_expected_type_maturity">Maturity: %1$s</string>
+    <!-- Editorial labels for the side-by-side "Coupons / Maturity" rows on the Bonds summary section. -->
+    <string name="bonds_summary_label_coupons">Coupons</string>
+    <string name="bonds_summary_label_maturity">Maturity</string>
+    <string name="bonds_calendar_month_events_zero">No payments</string>
+    <string name="bonds_calendar_month_events_one">1 event</string>
+    <string name="bonds_calendar_month_events_many">%1$d events</string>
     <string name="bonds_calendar_placeholder">Coming soon</string>
     <string name="bonds_holdings_empty">No bonds in portfolio.</string>
     <string name="bond_detail_yield">Yield: %1$s%%</string>
@@ -106,6 +118,8 @@
     <string name="trade_row_qty_line_full">%1$s · %2$s @ %3$s</string>
     <string name="trade_row_qty_line_partial">%1$s · %2$s @ %3$s · holding %4$s</string>
     <string name="trade_row_breakdown">Realized %1$s · Unrealized %2$s · Dividends %3$s</string>
+    <!-- Editorial Breakdown — bucket section kicker. Currency code lands first; Inter caps style takes care of casing. -->
+    <string name="breakdown_bucket_kicker">%1$s bucket · native</string>
 
     <!-- Chart screen -->
     <string name="chart_subtitle">Value vs. invested, in %1$s. Gap = market P&amp;L.</string>
@@ -113,6 +127,19 @@
     <string name="chart_line_value">Value</string>
     <string name="chart_line_invested">Invested</string>
     <string name="chart_period_pnl_label">Period P&amp;L</string>
+    <!-- Editorial Charts kickers + readout strip + best/worst list -->
+    <string name="charts_value_kicker_format">Portfolio value · %1$s</string>
+    <string name="charts_growth_kicker_format">Period P&amp;L · %1$s</string>
+    <string name="charts_allocation_kicker_format">Allocation · %1$s</string>
+    <string name="charts_label_invested">Invested</string>
+    <string name="charts_label_period_pnl">Period P&amp;L</string>
+    <string name="charts_readout_high">High</string>
+    <string name="charts_readout_low">Low</string>
+    <string name="charts_readout_delta">Δ Period</string>
+    <!-- "Nov → May" range subtext on the Δ Period readout. -->
+    <string name="charts_readout_range">%1$s → %2$s</string>
+    <string name="charts_growth_best_worst_label">Best &amp; worst months</string>
+    <string name="charts_growth_no_months">Not enough data for monthly breakdown.</string>
     <string name="chart_currency_all">All</string>
     <string name="chart_period_5d">5d</string>
     <string name="chart_period_1m">1m</string>
@@ -141,16 +168,16 @@
     <string name="market_period_custom">Custom</string>
     <string name="market_no_data">No data for the selected period.</string>
     <string name="market_fetch_failed">Couldn\'t fetch data: %1$s</string>
-    <!-- Header: %1$s = price, %2$s = currency. -->
-    <string name="market_header_price">%1$s %2$s</string>
-    <!-- Header delta line: %1$s = signed percent (with arrow), %2$s = signed absolute, %3$s = period tag. -->
-    <string name="market_header_delta">%1$s (%2$s) %3$s</string>
     <!-- Header timestamp + currency: %1$s = formatted now, %2$s = currency. -->
     <string name="market_header_meta">%1$s · %2$s</string>
     <string name="market_arrow_up">▲</string>
     <string name="market_arrow_down">▼</string>
     <string name="market_arrow_flat">•</string>
     <string name="market_action_refresh">Refresh</string>
+    <!-- Editorial "HELD" kicker preceding the held-stocks chip row. -->
+    <string name="market_held_label">Held</string>
+    <!-- Suffix kicker on the right side of the search field — cues "what to type". -->
+    <string name="market_search_suffix">Ticker / Co.</string>
 
     <!-- Portfolio screen tabs -->
 
@@ -167,11 +194,18 @@
     <string name="settings_section_display">Display</string>
     <string name="settings_display_currency_label">Display currency</string>
     <string name="settings_display_currency_help">Which currency the headline totals are shown in. Stored values stay in USD; this only affects rendering.</string>
+    <string name="settings_theme_mode_label">Theme</string>
+    <string name="settings_theme_mode_help">Light or dark appearance. Pick System to follow the device setting.</string>
+    <string name="theme_mode_system">System</string>
+    <string name="theme_mode_light">Light</string>
+    <string name="theme_mode_dark">Dark</string>
     <string name="settings_section_manual_entry">Manual entry</string>
     <string name="settings_section_data">Data</string>
     <string name="settings_manual_entry_help">Backup paths for data the auto-ingest pipeline can\'t reach — off-NBU bonds, special distributions, very old history.</string>
     <string name="settings_action_add_asset">Add asset</string>
+    <string name="settings_action_add_asset_help">Stock, ETF or bond — including non-API tickers.</string>
     <string name="settings_action_manual_event">Record dividend, coupon or split</string>
+    <string name="settings_action_manual_event_help">Income, maturity or split — when no auto-event applies.</string>
 
     <!-- Tax settings -->
     <string name="settings_section_taxes">Taxes</string>
@@ -179,6 +213,9 @@
     <string name="settings_default_stock_tax_label">Default stock tax %</string>
     <string name="settings_default_bond_tax_label">Default bond tax %</string>
     <string name="settings_action_tax_overrides">Per-asset overrides…</string>
+    <string name="settings_action_tax_overrides_help">Override the type default for individual assets.</string>
+    <string name="settings_default_stock_tax_help">Applied to dividend &amp; realized gains for stocks.</string>
+    <string name="settings_default_bond_tax_help">Applied to coupon income for bonds.</string>
     <string name="settings_tax_invalid">Tax % must be between 0 and 100</string>
     <string name="settings_tax_saved">Saved</string>
 
@@ -206,6 +243,9 @@
     <string name="manual_event_redemption_only_bonds">Bond redemption applies to bonds only.</string>
     <string name="manual_event_already_redeemed">This bond is already redeemed.</string>
     <string name="manual_event_kind_split">Split</string>
+    <!-- Editorial accent kickers used as section markers inside form sub-screens. -->
+    <string name="add_asset_section_bond">Bond fields</string>
+    <string name="manual_event_section_kind">Kind</string>
     <string name="manual_event_field_ratio">Ratio</string>
     <string name="manual_event_ratio_help">2-for-1 forward split → enter 2. 1-for-2 reverse → enter 0.5.</string>
     <string name="manual_event_split_only_stocks">Splits apply to stocks only.</string>

@@ -28,16 +28,19 @@ public final class UserPreferences implements TaxRates {
     private static final String KEY_DISPLAY_CURRENCY = "display_currency";
     private static final String KEY_DEFAULT_STOCK_TAX_PCT = "default_stock_tax_pct";
     private static final String KEY_DEFAULT_BOND_TAX_PCT = "default_bond_tax_pct";
+    private static final String KEY_THEME_MODE = "theme_mode";
 
     /** Ukrainian PIT on stock dividends and capital gains, applied at auto-ingest. */
     private static final float DEFAULT_STOCK_TAX_PCT = 15f;
     /** UAH OVDP coupons + capital gains are tax-exempt by Ukrainian law. */
     private static final float DEFAULT_BOND_TAX_PCT = 0f;
+    private static final ThemeMode DEFAULT_THEME_MODE = ThemeMode.SYSTEM;
 
     private final SharedPreferences prefs;
     private final MutableLiveData<Currency> displayCurrencyLive = new MutableLiveData<>();
     private final MutableLiveData<BigDecimal> defaultStockTaxPctLive = new MutableLiveData<>();
     private final MutableLiveData<BigDecimal> defaultBondTaxPctLive = new MutableLiveData<>();
+    private final MutableLiveData<ThemeMode> themeModeLive = new MutableLiveData<>();
 
     /** Listener kept as a field so it isn't GC'd — SharedPreferences holds it weakly. */
     private final SharedPreferences.OnSharedPreferenceChangeListener listener =
@@ -48,6 +51,8 @@ public final class UserPreferences implements TaxRates {
                     defaultStockTaxPctLive.postValue(getDefaultStockTaxPct());
                 } else if (KEY_DEFAULT_BOND_TAX_PCT.equals(key)) {
                     defaultBondTaxPctLive.postValue(getDefaultBondTaxPct());
+                } else if (KEY_THEME_MODE.equals(key)) {
+                    themeModeLive.postValue(getThemeMode());
                 }
             };
 
@@ -57,6 +62,7 @@ public final class UserPreferences implements TaxRates {
         this.displayCurrencyLive.setValue(getDisplayCurrency());
         this.defaultStockTaxPctLive.setValue(getDefaultStockTaxPct());
         this.defaultBondTaxPctLive.setValue(getDefaultBondTaxPct());
+        this.themeModeLive.setValue(getThemeMode());
         this.prefs.registerOnSharedPreferenceChangeListener(listener);
     }
 
@@ -106,6 +112,21 @@ public final class UserPreferences implements TaxRates {
     @NonNull
     public LiveData<BigDecimal> defaultBondTaxPct() {
         return defaultBondTaxPctLive;
+    }
+
+    @NonNull
+    public ThemeMode getThemeMode() {
+        String raw = prefs.getString(KEY_THEME_MODE, DEFAULT_THEME_MODE.name());
+        return ThemeMode.parseOr(raw, DEFAULT_THEME_MODE);
+    }
+
+    public void setThemeMode(@NonNull ThemeMode mode) {
+        prefs.edit().putString(KEY_THEME_MODE, mode.name()).apply();
+    }
+
+    @NonNull
+    public LiveData<ThemeMode> themeMode() {
+        return themeModeLive;
     }
 
     @NonNull

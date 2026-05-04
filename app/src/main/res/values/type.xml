@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        FinMon Editorial type scale.
+        Three families: Source Serif 4 (display/titles/italic), Inter (labels/chips/kickers),
+        JetBrains Mono (numbers, prices, codes).
+        Sizes per README: 9 / 10–11 / 12–14 / 15–16 / 18 / 22–30 / 36.
+
+        Each style declares both `fontFamily` (AppCompat namespace) and
+        `android:fontFamily` (platform namespace). Both are needed — Material 3's
+        AppCompatTextView reads `app:fontFamily` from textAppearance via the
+        AppCompat resolution path; dropping it silently defaults to system sans
+        for serif requests on Android 16.
+    -->
+
+    <!-- ===== Serif: display ===== -->
+    <style name="TextAppearance.FinMon.Display.Headline" parent="TextAppearance.Material3.HeadlineLarge">
+        <item name="fontFamily">@font/source_serif_4</item>
+        <item name="android:fontFamily">@font/source_serif_4</item>
+        <item name="android:textFontWeight">700</item>
+        <item name="android:textSize">36sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Display.Large" parent="TextAppearance.Material3.HeadlineMedium">
+        <item name="fontFamily">@font/source_serif_4</item>
+        <item name="android:fontFamily">@font/source_serif_4</item>
+        <item name="android:textFontWeight">600</item>
+        <item name="android:textSize">30sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Display.Medium" parent="TextAppearance.Material3.HeadlineSmall">
+        <item name="fontFamily">@font/source_serif_4</item>
+        <item name="android:fontFamily">@font/source_serif_4</item>
+        <item name="android:textFontWeight">600</item>
+        <item name="android:textSize">26sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Display.Small" parent="TextAppearance.Material3.TitleLarge">
+        <item name="fontFamily">@font/source_serif_4</item>
+        <item name="android:fontFamily">@font/source_serif_4</item>
+        <item name="android:textFontWeight">600</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <!-- ===== Serif: titles ===== -->
+    <style name="TextAppearance.FinMon.Title.Large" parent="TextAppearance.Material3.TitleMedium">
+        <item name="fontFamily">@font/source_serif_4</item>
+        <item name="android:fontFamily">@font/source_serif_4</item>
+        <item name="android:textFontWeight">700</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Title.Medium" parent="TextAppearance.Material3.TitleSmall">
+        <item name="fontFamily">@font/source_serif_4</item>
+        <item name="android:fontFamily">@font/source_serif_4</item>
+        <item name="android:textFontWeight">700</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Title.Small" parent="TextAppearance.Material3.TitleSmall">
+        <item name="fontFamily">@font/source_serif_4</item>
+        <item name="android:fontFamily">@font/source_serif_4</item>
+        <item name="android:textFontWeight">700</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <!-- ===== Serif: body ===== -->
+    <style name="TextAppearance.FinMon.Body.Medium" parent="TextAppearance.Material3.BodyMedium">
+        <item name="fontFamily">@font/source_serif_4</item>
+        <item name="android:fontFamily">@font/source_serif_4</item>
+        <item name="android:textFontWeight">400</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Body.Small" parent="TextAppearance.Material3.BodySmall">
+        <item name="fontFamily">@font/source_serif_4</item>
+        <item name="android:fontFamily">@font/source_serif_4</item>
+        <item name="android:textFontWeight">450</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/fm_ink_soft</item>
+    </style>
+
+    <!-- Italic helper/sub copy. 14sp is the spec default; rows that need it
+         smaller (settings sub-helps, etc.) override textSize inline. Weight
+         lifted from 400 → 450 since italic Source Serif at light weight reads
+         thin on cream. -->
+    <style name="TextAppearance.FinMon.Body.Italic" parent="TextAppearance.Material3.BodyMedium">
+        <item name="fontFamily">@font/source_serif_4</item>
+        <item name="android:fontFamily">@font/source_serif_4</item>
+        <item name="android:textFontWeight">450</item>
+        <item name="android:textStyle">italic</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/fm_ink_soft</item>
+    </style>
+
+    <!-- ===== Inter: labels / chips / kickers ===== -->
+    <style name="TextAppearance.FinMon.Label.Large" parent="TextAppearance.Material3.LabelLarge">
+        <item name="fontFamily">@font/inter</item>
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textFontWeight">600</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Label.Medium" parent="TextAppearance.Material3.LabelMedium">
+        <item name="fontFamily">@font/inter</item>
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textFontWeight">600</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Label.Small" parent="TextAppearance.Material3.LabelSmall">
+        <item name="fontFamily">@font/inter</item>
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textFontWeight">500</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/fm_ink_soft</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Chip" parent="TextAppearance.Material3.LabelMedium">
+        <item name="fontFamily">@font/inter</item>
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textFontWeight">500</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/fm_chip_text_idle</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Chip.Selected">
+        <item name="android:textFontWeight">600</item>
+        <item name="android:textColor">@color/fm_chip_text_selected</item>
+    </style>
+
+    <!-- All-caps Inter kicker. Spec calls for 9sp; bumped to 10sp for legibility
+         on phone hardware — caps + 0.18em tracking + mute color make 9sp hard
+         to read for some viewers. 10sp keeps the editorial "small label" feel
+         without blurring at typical viewing distance. -->
+    <style name="TextAppearance.FinMon.Kicker" parent="TextAppearance.Material3.LabelSmall">
+        <item name="fontFamily">@font/inter</item>
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textFontWeight">600</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:textColor">@color/fm_ink_mute</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.16</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.SaveButton" parent="TextAppearance.Material3.LabelLarge">
+        <item name="fontFamily">@font/inter</item>
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textFontWeight">700</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/fm_bg</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.15</item>
+    </style>
+
+    <!-- ===== JetBrains Mono: numbers ===== -->
+    <style name="TextAppearance.FinMon.Mono.Display" parent="TextAppearance.Material3.HeadlineLarge">
+        <item name="fontFamily">@font/jetbrains_mono</item>
+        <item name="android:fontFamily">@font/jetbrains_mono</item>
+        <item name="android:textFontWeight">700</item>
+        <item name="android:textSize">36sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Mono.Large" parent="TextAppearance.Material3.TitleLarge">
+        <item name="fontFamily">@font/jetbrains_mono</item>
+        <item name="android:fontFamily">@font/jetbrains_mono</item>
+        <item name="android:textFontWeight">600</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Mono.Medium" parent="TextAppearance.Material3.BodyMedium">
+        <item name="fontFamily">@font/jetbrains_mono</item>
+        <item name="android:fontFamily">@font/jetbrains_mono</item>
+        <item name="android:textFontWeight">600</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/fm_ink</item>
+    </style>
+
+    <style name="TextAppearance.FinMon.Mono.Small" parent="TextAppearance.Material3.BodySmall">
+        <item name="fontFamily">@font/jetbrains_mono</item>
+        <item name="android:fontFamily">@font/jetbrains_mono</item>
+        <item name="android:textFontWeight">500</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/fm_ink_soft</item>
+    </style>
+</resources>

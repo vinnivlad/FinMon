@@ -7,11 +7,11 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
 import android.widget.EditText;
-import android.widget.Filter;
+import android.widget.PopupMenu;
 
 import androidx.activity.result.ActivityResult;
 import androidx.activity.result.ActivityResultLauncher;
@@ -28,6 +28,7 @@ import com.my.finmon.ServiceLocator;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.ImportExportRepository;
 import com.my.finmon.databinding.FragmentSettingsBinding;
+import com.my.finmon.prefs.ThemeMode;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -36,8 +37,6 @@ import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 /**
@@ -84,7 +83,8 @@ public final class SettingsFragment extends Fragment {
                 SettingsViewModel.factory(requireContext())
         ).get(SettingsViewModel.class);
 
-        setupDisplayCurrencyDropdown();
+        setupDisplayCurrencyRow();
+        setupThemeModeRow();
         setupTaxDefaults();
 
         binding.buttonAddAsset.setOnClickListener(v ->
@@ -162,25 +162,62 @@ public final class SettingsFragment extends Fragment {
         });
     }
 
-    private void setupDisplayCurrencyDropdown() {
-        Currency[] options = Currency.values();
-        String[] labels = new String[options.length];
-        for (int i = 0; i < options.length; i++) labels[i] = options[i].name();
+    private void setupThemeModeRow() {
+        ThemeMode[] options = ThemeMode.values();
 
-        // Passthrough filter: MaterialAutoCompleteTextView's default ArrayAdapter
-        // filters items by the current text, which collapses the list to whichever
-        // currency is already selected. We always want all 3 options visible.
-        binding.displayCurrencyDropdown.setAdapter(new PassthroughAdapter(
-                requireContext(), labels));
-
-        viewModel.displayCurrency().observe(getViewLifecycleOwner(), c -> {
-            if (c == null) return;
-            binding.displayCurrencyDropdown.setText(c.name(), false);
+        viewModel.themeMode().observe(getViewLifecycleOwner(), mode -> {
+            if (mode == null || binding == null) return;
+            binding.themeValue.setText(themeModeLabel(mode));
         });
 
-        binding.displayCurrencyDropdown.setOnItemClickListener((parent, v, position, id) -> {
-            if (position < 0 || position >= options.length) return;
-            viewModel.setDisplayCurrency(options[position]);
+        binding.themeRow.setOnClickListener(v -> {
+            PopupMenu popup = new PopupMenu(requireContext(), binding.themeValue);
+            for (int i = 0; i < options.length; i++) {
+                popup.getMenu().add(0, i, i, themeModeLabel(options[i]));
+            }
+            popup.setOnMenuItemClickListener((MenuItem item) -> {
+                int idx = item.getItemId();
+                if (idx < 0 || idx >= options.length) return false;
+                // setThemeMode triggers AppCompatDelegate.setDefaultNightMode which
+                // recreates the activity synchronously. Popup is dismissed before
+                // recreate by calling .dismiss() — though for PopupMenu the system
+                // already collapses it on item-click.
+                viewModel.setThemeMode(options[idx]);
+                return true;
+            });
+            popup.show();
+        });
+    }
+
+    private String themeModeLabel(@NonNull ThemeMode mode) {
+        switch (mode) {
+            case LIGHT:  return getString(R.string.theme_mode_light);
+            case DARK:   return getString(R.string.theme_mode_dark);
+            case SYSTEM:
+            default:     return getString(R.string.theme_mode_system);
+        }
+    }
+
+    private void setupDisplayCurrencyRow() {
+        Currency[] options = Currency.values();
+
+        viewModel.displayCurrency().observe(getViewLifecycleOwner(), c -> {
+            if (c == null || binding == null) return;
+            binding.currencyValue.setText(c.name());
+        });
+
+        binding.currencyRow.setOnClickListener(v -> {
+            PopupMenu popup = new PopupMenu(requireContext(), binding.currencyValue);
+            for (int i = 0; i < options.length; i++) {
+                popup.getMenu().add(0, i, i, options[i].name());
+            }
+            popup.setOnMenuItemClickListener((MenuItem item) -> {
+                int idx = item.getItemId();
+                if (idx < 0 || idx >= options.length) return false;
+                viewModel.setDisplayCurrency(options[idx]);
+                return true;
+            });
+            popup.show();
         });
     }
 
@@ -288,36 +325,5 @@ public final class SettingsFragment extends Fragment {
     public void onDestroyView() {
         super.onDestroyView();
         binding = null;
-    }
-
-    /** Disables the default per-keystroke filtering so all options remain visible. */
-    private static final class PassthroughAdapter extends ArrayAdapter<String> {
-        private final List<String> items;
-        private final Filter filter = new Filter() {
-            @Override
-            protected FilterResults performFiltering(@Nullable CharSequence constraint) {
-                FilterResults r = new FilterResults();
-                r.values = new ArrayList<>(items);
-                r.count = items.size();
-                return r;
-            }
-            @Override
-            protected void publishResults(@Nullable CharSequence constraint, FilterResults results) {
-                notifyDataSetChanged();
-            }
-        };
-
-        PassthroughAdapter(@NonNull android.content.Context ctx, @NonNull String[] labels) {
-            super(ctx, android.R.layout.simple_list_item_1, new ArrayList<>());
-            items = new ArrayList<>();
-            for (String s : labels) items.add(s);
-            addAll(items);
-        }
-
-        @NonNull
-        @Override
-        public Filter getFilter() {
-            return filter;
-        }
     }
 }

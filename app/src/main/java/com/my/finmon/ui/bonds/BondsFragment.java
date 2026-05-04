@@ -106,10 +106,16 @@ public class BondsFragment extends Fragment {
         if (binding == null) return;
         boolean empty = (r == null || r.payments.isEmpty());
 
-        binding.expectedPaymentsHeadline.setVisibility(empty ? View.GONE : View.VISIBLE);
-        binding.expectedPaymentsEquivalents.setVisibility(empty ? View.GONE : View.VISIBLE);
-        binding.expectedPaymentsCoupons.setVisibility(empty ? View.GONE : View.VISIBLE);
-        binding.expectedPaymentsMaturity.setVisibility(empty ? View.GONE : View.VISIBLE);
+        // Headline split + equivalents + breakdown rows are all part of the
+        // "non-empty" presentation; empty state replaces them with an italic line.
+        int headlineVis = empty ? View.GONE : View.VISIBLE;
+        binding.expectedPaymentsHeadlineInteger.setVisibility(headlineVis);
+        binding.expectedPaymentsHeadlineFraction.setVisibility(headlineVis);
+        binding.expectedPaymentsHeadlineCurrency.setVisibility(headlineVis);
+        binding.expectedPaymentsEquivalents.setVisibility(headlineVis);
+        binding.expectedPaymentsInnerRule.setVisibility(headlineVis);
+        binding.expectedPaymentsCouponsRow.setVisibility(headlineVis);
+        binding.expectedPaymentsMaturityRow.setVisibility(headlineVis);
         binding.expectedPaymentsFxGap.setVisibility(View.GONE);
         binding.expectedPaymentsEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
         if (empty) return;
@@ -125,8 +131,7 @@ public class BondsFragment extends Fragment {
             headlineAmount = r.totalInBase;
             headlineCurrency = r.baseCurrency;
         }
-        binding.expectedPaymentsHeadline.setText(
-                MONEY.format(headlineAmount) + " " + headlineCurrency.name());
+        renderHeadlineSplit(headlineAmount, headlineCurrency);
 
         // Equivalents ribbon: same total expressed in the *other* display currencies.
         StringBuilder others = new StringBuilder();
@@ -155,30 +160,56 @@ public class BondsFragment extends Fragment {
             (p.type == EventType.MATURITY ? maturityByCurrency : couponsByCurrency)
                     .merge(p.currency, p.amount, BigDecimal::add);
         }
-        bindTypeLine(binding.expectedPaymentsCoupons,
-                couponsByCurrency, R.string.bonds_expected_type_coupons);
-        bindTypeLine(binding.expectedPaymentsMaturity,
-                maturityByCurrency, R.string.bonds_expected_type_maturity);
+        bindTypeRow(binding.expectedPaymentsCouponsRow,
+                binding.expectedPaymentsCoupons, couponsByCurrency);
+        bindTypeRow(binding.expectedPaymentsMaturityRow,
+                binding.expectedPaymentsMaturity, maturityByCurrency);
 
         binding.expectedPaymentsFxGap.setVisibility(r.hasFxGaps ? View.VISIBLE : View.GONE);
     }
 
-    private void bindTypeLine(
-            @NonNull android.widget.TextView view,
-            @NonNull Map<Currency, BigDecimal> byCurrency,
-            int labelRes) {
+    /**
+     * Editorial split-headline render: large serif integer, smaller serif decimal
+     * fraction, Inter-caps currency code on the side. Mirrors Portfolio.
+     */
+    private void renderHeadlineSplit(@NonNull BigDecimal amount, @NonNull Currency ccy) {
+        String formatted = MONEY.format(amount);
+        int dot = formatted.lastIndexOf('.');
+        String intPart;
+        String fracPart;
+        if (dot >= 0) {
+            intPart = formatted.substring(0, dot);
+            fracPart = formatted.substring(dot);
+        } else {
+            intPart = formatted;
+            fracPart = "";
+        }
+        binding.expectedPaymentsHeadlineInteger.setText(intPart);
+        binding.expectedPaymentsHeadlineFraction.setText(fracPart);
+        binding.expectedPaymentsHeadlineCurrency.setText(ccy.name());
+    }
+
+    /**
+     * Render one of the Coupons/Maturity rows. Hides the whole row (label + value)
+     * when no amounts exist for that type so the section doesn't carry an empty
+     * "Coupons" label with nothing next to it.
+     */
+    private void bindTypeRow(
+            @NonNull View row,
+            @NonNull android.widget.TextView amountsView,
+            @NonNull Map<Currency, BigDecimal> byCurrency) {
         StringBuilder amounts = new StringBuilder();
         for (Currency c : Currency.values()) {
             BigDecimal v = byCurrency.get(c);
             if (v == null || v.signum() == 0) continue;
-            if (amounts.length() > 0) amounts.append(", ");
+            if (amounts.length() > 0) amounts.append(" · ");
             amounts.append(MONEY.format(v)).append(' ').append(c.name());
         }
         if (amounts.length() == 0) {
-            view.setVisibility(View.GONE);
+            row.setVisibility(View.GONE);
         } else {
-            view.setText(getString(labelRes, amounts.toString()));
-            view.setVisibility(View.VISIBLE);
+            amountsView.setText(amounts.toString());
+            row.setVisibility(View.VISIBLE);
         }
     }
 

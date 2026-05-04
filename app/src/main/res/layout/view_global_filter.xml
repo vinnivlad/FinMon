@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Global filter bar — shared by Portfolio, Bonds, Breakdown, Charts. Two rows:
-      - Currency chips on the left (scrollable) + Settings gear pinned right.
-      - Period chips below (full-width scrollable).
-    Both rows hide on screens that don't react to the global filter (Market,
-    Settings, modal sub-screens). Reaching Settings from those screens means
-    switching to a filter-aware tab first — accepted trade-off in exchange for
-    not burning a full row on the gear button.
+      - Currency chips (scrollable, full-width).
+      - Period chips below (scrollable, full-width).
+    Visibility is gated by FILTER_DESTINATIONS in MainActivity — hidden on Market,
+    Settings, and modal sub-screens. The Settings entry point is the gear icon in
+    the masthead above this bar, always visible regardless of destination.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -23,40 +22,22 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <LinearLayout
+        <HorizontalScrollView
+            android:id="@+id/globalCurrencyChipsScroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:paddingHorizontal="16dp"
+            android:scrollbars="none">
 
-            <HorizontalScrollView
-                android:id="@+id/globalCurrencyChipsScroll"
-                android:layout_width="0dp"
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/globalCurrencyChips"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:paddingStart="16dp"
-                android:paddingEnd="0dp"
-                android:scrollbars="none">
-
-                <com.google.android.material.chip.ChipGroup
-                    android:id="@+id/globalCurrencyChips"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    app:chipSpacingHorizontal="8dp"
-                    app:singleLine="true"
-                    app:singleSelection="true"
-                    app:selectionRequired="true" />
-            </HorizontalScrollView>
-
-            <ImageButton
-                android:id="@+id/globalSettingsButton"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginEnd="8dp"
-                android:src="@drawable/ic_settings"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/settings_title" />
-        </LinearLayout>
+                app:chipSpacingHorizontal="8dp"
+                app:singleLine="true"
+                app:singleSelection="true"
+                app:selectionRequired="true" />
+        </HorizontalScrollView>
 
         <HorizontalScrollView
             android:id="@+id/globalPeriodChipsScroll"
@@ -77,7 +58,7 @@
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/globalPeriodChipAll"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.FinMon.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:checked="true"
@@ -85,49 +66,49 @@
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/globalPeriodChipCustom"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.FinMon.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/chart_period_custom" />
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/globalPeriodChip5d"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.FinMon.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/chart_period_5d" />
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/globalPeriodChip1m"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.FinMon.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/chart_period_1m" />
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/globalPeriodChip6m"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.FinMon.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/chart_period_6m" />
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/globalPeriodChipYtd"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.FinMon.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/chart_period_ytd" />
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/globalPeriodChip1y"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.FinMon.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/chart_period_1y" />
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/globalPeriodChip5y"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.FinMon.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/chart_period_5y" />

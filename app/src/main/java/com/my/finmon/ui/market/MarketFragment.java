@@ -14,9 +14,6 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
-import com.github.mikephil.charting.components.Legend;
-import com.github.mikephil.charting.components.XAxis;
-import com.github.mikephil.charting.components.YAxis;
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
@@ -32,6 +29,7 @@ import com.my.finmon.data.remote.yahoo.YahooClient.SeriesPoint;
 import com.my.finmon.databinding.FragmentMarketBinding;
 import com.my.finmon.ui.addtrade.AssetSuggestion;
 import com.my.finmon.ui.addtrade.AssetSuggestionAdapter;
+import com.my.finmon.ui.charts.MpAndroidEditorial;
 import com.my.finmon.ui.market.MarketViewModel.CustomRange;
 
 import java.math.BigDecimal;
@@ -127,7 +125,10 @@ public class MarketFragment extends Fragment {
             Chip chip = new Chip(requireContext());
             chip.setText(a.ticker);
             chip.setCheckable(true);
-            chip.setChipBackgroundColorResource(android.R.color.transparent);
+            // No explicit chipBackgroundColor — let Widget.FinMon.Chip.Filter (applied
+            // via the theme's chipStyle attr) drive idle/checked states. Forcing a
+            // transparent background here would break the editorial ink-fill on
+            // selected.
             int id = View.generateViewId();
             chip.setId(id);
             chipIdToAsset.put(id, a);
@@ -217,6 +218,7 @@ public class MarketFragment extends Fragment {
     private void openDateRangePicker() {
         MaterialDatePicker.Builder<androidx.core.util.Pair<Long, Long>> builder =
                 MaterialDatePicker.Builder.dateRangePicker()
+                        .setTheme(R.style.ThemeOverlay_FinMon_DatePicker)
                         .setTitleText(R.string.chart_custom_picker_title);
 
         CustomRange existing = viewModel.customRange().getValue();
@@ -277,12 +279,13 @@ public class MarketFragment extends Fragment {
 
         binding.headerCard.setVisibility(View.VISIBLE);
 
-        String name = (s.name != null && !s.name.isEmpty()) ? s.name : s.symbol;
+        binding.headerTicker.setText(s.symbol);
+        String name = (s.name != null && !s.name.isEmpty()) ? s.name : "";
         binding.headerName.setText(name);
+        binding.headerName.setVisibility(name.isEmpty() ? View.GONE : View.VISIBLE);
 
         String ccy = s.currency != null ? s.currency : "";
-        binding.headerPrice.setText(getString(
-                R.string.market_header_price, MONEY.format(last.close), ccy));
+        renderHeadlineSplit(last.close, ccy);
 
         BigDecimal delta = last.close.subtract(first.close);
         BigDecimal pct = first.close.signum() != 0
@@ -303,17 +306,17 @@ public class MarketFragment extends Fragment {
         }
 
         String pctStr = SIGNED_PCT.format(pct);
-        // The signed format includes the "+"/"-" prefix; replace the visual sign with
-        // the arrow glyph to match the screenshot's "▲ +12.32%" style.
+        // SIGNED_PCT carries +/- prefix; swap it for the arrow glyph so the
+        // headline reads "▲ 12.32%" rather than "▲ +12.32%".
         String pctNoSign = pctStr.replaceFirst("^[+-]", "");
-        String periodTag = periodTag();
+        binding.headerPctDelta.setText(arrow + " " + pctNoSign);
+        binding.headerPctDelta.setTextColor(ContextCompat.getColor(requireContext(), color));
 
-        binding.headerDelta.setText(getString(
-                R.string.market_header_delta,
-                arrow + " " + pctNoSign,
-                SIGNED_MONEY.format(delta),
-                periodTag));
-        binding.headerDelta.setTextColor(ContextCompat.getColor(requireContext(), color));
+        // Bottom line: signed money delta + period tag, colored to match.
+        String periodTag = periodTag();
+        binding.headerSignedDelta.setText(
+                SIGNED_MONEY.format(delta) + (periodTag.isEmpty() ? "" : " · " + periodTag));
+        binding.headerSignedDelta.setTextColor(ContextCompat.getColor(requireContext(), color));
 
         // Timestamp: "now" in the device's local zone — represents when the data was
         // fetched, not the bar's market time. For a real-time browser this is the
@@ -321,6 +324,29 @@ public class MarketFragment extends Fragment {
         LocalDateTime now = LocalDateTime.now();
         String tsText = now.format(HEADER_TS_FMT);
         binding.headerMeta.setText(getString(R.string.market_header_meta, tsText, ccy));
+    }
+
+    /**
+     * Render a price into the editorial split-headline form: Display.Headline serif
+     * integer, Display.Small ink-soft fraction (incl. leading dot), Inter-caps
+     * currency code on the side.
+     */
+    private void renderHeadlineSplit(@NonNull BigDecimal price, @NonNull String ccy) {
+        String formatted = MONEY.format(price);
+        int dot = formatted.lastIndexOf('.');
+        String intPart;
+        String fracPart;
+        if (dot >= 0) {
+            intPart = formatted.substring(0, dot);
+            fracPart = formatted.substring(dot);
+        } else {
+            intPart = formatted;
+            fracPart = "";
+        }
+        binding.headerPriceInteger.setText(intPart);
+        binding.headerPriceFraction.setText(fracPart);
+        binding.headerPriceCurrency.setText(ccy);
+        binding.headerPriceCurrency.setVisibility(ccy.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
     @NonNull
@@ -344,22 +370,24 @@ public class MarketFragment extends Fragment {
     // ─── Chart ────────────────────────────────────────────────────────────
 
     private void configureChart() {
-        binding.chart.getDescription().setEnabled(false);
-        binding.chart.setNoDataText("");
+        MpAndroidEditorial.applyLineChart(binding.chart);
         binding.chart.setPinchZoom(true);
         binding.chart.setDragEnabled(true);
         binding.chart.setScaleEnabled(true);
 
-        XAxis x = binding.chart.getXAxis();
-        x.setPosition(XAxis.XAxisPosition.BOTTOM);
-        x.setDrawGridLines(false);
-
-        binding.chart.getAxisRight().setEnabled(false);
-        YAxis y = binding.chart.getAxisLeft();
-        y.setDrawGridLines(true);
-
-        Legend legend = binding.chart.getLegend();
-        legend.setEnabled(false);  // single-line chart, legend would be redundant
+        // Mirror the Y-axis on the right edge — common trading-platform convention,
+        // makes the latest price level easy to read from either side of the chart.
+        // applyLineChart() disables the right axis by default for Charts pages where
+        // we don't want it; Market re-enables and styles it to match the left.
+        com.github.mikephil.charting.components.YAxis right = binding.chart.getAxisRight();
+        right.setEnabled(true);
+        right.setDrawAxisLine(false);
+        right.setDrawGridLines(false);
+        right.setTextColor(ContextCompat.getColor(requireContext(), R.color.fm_ink_mute));
+        right.setTextSize(10f);
+        android.graphics.Typeface mono = androidx.core.content.res.ResourcesCompat
+                .getFont(requireContext(), R.font.jetbrains_mono);
+        if (mono != null) right.setTypeface(mono);
     }
 
     private void renderChart(@Nullable MarketSeries s) {
@@ -391,15 +419,22 @@ public class MarketFragment extends Fragment {
         float pad = range > 0 ? range * 0.10f : Math.max(0.5f, Math.abs(maxY) * 0.02f);
         binding.chart.getAxisLeft().setAxisMinimum(minY - pad);
         binding.chart.getAxisLeft().setAxisMaximum(maxY + pad);
+        // Mirror the same range on the right axis so left/right labels stay aligned.
+        binding.chart.getAxisRight().setAxisMinimum(minY - pad);
+        binding.chart.getAxisRight().setAxisMaximum(maxY + pad);
 
-        int color = ContextCompat.getColor(requireContext(), R.color.pnl_positive);
+        int color = ContextCompat.getColor(requireContext(), R.color.fm_accent);
         LineDataSet set = new LineDataSet(entries, "");
         set.setColor(color);
-        set.setLineWidth(2f);
+        set.setLineWidth(1.6f);
         set.setDrawCircles(false);
         set.setDrawValues(false);
         set.setMode(LineDataSet.Mode.LINEAR);
-        set.setDrawFilled(false);
+        // Editorial fill — soft teal area below the price line. ~8 % alpha matches
+        // the JSX accent fill on the Value chart.
+        set.setDrawFilled(true);
+        set.setFillColor(color);
+        set.setFillAlpha(20);
 
         final boolean isIntraday = intraday;
         final long anchorT = t0;

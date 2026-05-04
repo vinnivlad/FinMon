@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Bonds → Calendar tab. Weekday legend (S M T W T F S) at the top, then an
-    infinite-scrolling vertical CalendarView below. Day cells are bound by
-    BondsCalendarPageFragment with payment-date markers.
+    Bonds → Calendar tab. Editorial weekday-letter strip (kicker type, framed
+    by 1 dp top + bottom hairlines so it reads as a banded header), then an
+    infinite-scrolling vertical CalendarView below. Day cells and month headers
+    are bound by BondsCalendarPageFragment.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -11,15 +12,32 @@
     android:layout_height="match_parent">
 
     <LinearLayout
-        android:id="@+id/weekdayLegend"
+        android:id="@+id/weekdayLegendBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingHorizontal="2dp"
-        android:paddingVertical="6dp"
+        android:orientation="vertical"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/fm_rule_hairline"
+            android:background="?attr/colorOutlineVariant" />
+
+        <LinearLayout
+            android:id="@+id/weekdayLegend"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="@dimen/fm_page_padding_h"
+            android:paddingVertical="6dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/fm_rule_hairline"
+            android:background="?attr/colorOutlineVariant" />
+    </LinearLayout>
 
     <com.kizitonwose.calendar.view.CalendarView
         android:id="@+id/calendarView"
@@ -29,7 +47,7 @@
         app:cv_monthHeaderResource="@layout/view_calendar_month_header"
         app:cv_orientation="vertical"
         app:cv_scrollPaged="false"
-        app:layout_constraintTop_toBottomOf="@id/weekdayLegend"
+        app:layout_constraintTop_toBottomOf="@id/weekdayLegendBar"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
