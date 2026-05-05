@@ -70,6 +70,19 @@ public final class SettingsViewModel extends ViewModel {
     }
 
     @NonNull
+    public LiveData<Boolean> notificationsEnabled() {
+        return prefs.notificationsEnabled();
+    }
+
+    public boolean isNotificationsEnabled() {
+        return prefs.isNotificationsEnabled();
+    }
+
+    public void setNotificationsEnabled(boolean enabled) {
+        prefs.setNotificationsEnabled(enabled);
+    }
+
+    @NonNull
     public static ViewModelProvider.Factory factory(@NonNull Context anyContext) {
         ServiceLocator sl = ServiceLocator.get(anyContext);
         return new ViewModelProvider.Factory() {

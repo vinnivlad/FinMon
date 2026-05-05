@@ -219,6 +219,18 @@
     <string name="settings_tax_invalid">Tax % must be between 0 and 100</string>
     <string name="settings_tax_saved">Saved</string>
 
+    <!-- Notifications -->
+    <string name="settings_section_notifications">Notifications</string>
+    <string name="settings_notifications_label">Enable notifications</string>
+    <string name="settings_notifications_help">Bond payments (today and 1 week ahead) and a weekly portfolio P&amp;L summary on Sunday evening.</string>
+    <string name="settings_notifications_permission_denied">Permission denied. Enable notifications in system settings to receive bond and weekly summary alerts.</string>
+    <string name="notif_channel_name">FinMon alerts</string>
+    <string name="notif_channel_description">Bond payment reminders and weekly portfolio summary.</string>
+    <string name="notif_bond_today_title">Bond payment today</string>
+    <string name="notif_bond_upcoming_title">Bond payment in 1 week</string>
+    <string name="notif_bond_count">%1$d bond payments</string>
+    <string name="notif_weekly_pnl_title">This week\'s portfolio P&amp;L</string>
+
     <!-- Per-asset tax overrides screen -->
     <string name="tax_overrides_title">Per-asset tax rates</string>
     <string name="tax_overrides_help">Override the type default for an individual asset. Leave blank to use the default.</string>

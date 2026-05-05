@@ -1,7 +1,10 @@
 package com.my.finmon.ui.settings;
 
+import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -18,6 +21,7 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.navigation.fragment.NavHostFragment;
@@ -28,6 +32,7 @@ import com.my.finmon.ServiceLocator;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.ImportExportRepository;
 import com.my.finmon.databinding.FragmentSettingsBinding;
+import com.my.finmon.notifications.NotificationScheduler;
 import com.my.finmon.prefs.ThemeMode;
 
 import java.io.BufferedReader;
@@ -65,6 +70,13 @@ public final class SettingsFragment extends Fragment {
             new ActivityResultContracts.StartActivityForResult(),
             this::onImportPicked);
 
+    /** Triggered when the user toggles notifications on while POST_NOTIFICATIONS
+     *  hasn't been granted yet (Android 13+). On grant we commit the toggle and
+     *  schedule the workers; on deny we snap the switch back to off. */
+    private final ActivityResultLauncher<String> notifPermissionLauncher = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(),
+            this::onNotificationPermissionResult);
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater,
@@ -86,6 +98,7 @@ public final class SettingsFragment extends Fragment {
         setupDisplayCurrencyRow();
         setupThemeModeRow();
         setupTaxDefaults();
+        setupNotificationsRow();
 
         binding.buttonAddAsset.setOnClickListener(v ->
                 NavHostFragment.findNavController(this)
@@ -101,6 +114,62 @@ public final class SettingsFragment extends Fragment {
 
         binding.buttonExportData.setOnClickListener(v -> launchExport());
         binding.buttonImportData.setOnClickListener(v -> launchImport());
+    }
+
+    /** Set while the LiveData observer is programmatically syncing the switch from
+     *  prefs — keeps the user-action handler from interpreting that as a tap. */
+    private boolean syncingNotificationsSwitch = false;
+
+    private void setupNotificationsRow() {
+        // Initial position from prefs; observer keeps it in sync if changed elsewhere.
+        viewModel.notificationsEnabled().observe(getViewLifecycleOwner(), enabled -> {
+            if (binding == null || enabled == null) return;
+            if (binding.notificationsSwitch.isChecked() != enabled) {
+                syncingNotificationsSwitch = true;
+                binding.notificationsSwitch.setChecked(enabled);
+                syncingNotificationsSwitch = false;
+            }
+        });
+
+        // Tapping the row toggles the switch — same behavior as the other Settings rows.
+        binding.notificationsRow.setOnClickListener(v ->
+                binding.notificationsSwitch.toggle());
+
+        binding.notificationsSwitch.setOnCheckedChangeListener((v, checked) -> {
+            if (syncingNotificationsSwitch) return;  // observer-initiated, not user
+            if (checked) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                        && ContextCompat.checkSelfPermission(
+                                requireContext(), Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+                    // Commit happens in the permission callback; don't write the pref yet.
+                    return;
+                }
+                commitNotificationsEnabled(true);
+            } else {
+                commitNotificationsEnabled(false);
+            }
+        });
+    }
+
+    private void onNotificationPermissionResult(boolean granted) {
+        if (granted) {
+            commitNotificationsEnabled(true);
+        } else {
+            // Snap the switch back to off — pref was never written, scheduler stays cancelled.
+            if (binding != null) binding.notificationsSwitch.setChecked(false);
+            if (binding != null) {
+                Snackbar.make(binding.getRoot(),
+                        getString(R.string.settings_notifications_permission_denied),
+                        Snackbar.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    private void commitNotificationsEnabled(boolean enabled) {
+        viewModel.setNotificationsEnabled(enabled);
+        NotificationScheduler.apply(requireContext().getApplicationContext(), enabled);
     }
 
     private void setupTaxDefaults() {

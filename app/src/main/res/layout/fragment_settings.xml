@@ -432,6 +432,90 @@
                 android:background="?attr/colorOutlineVariant" />
         </LinearLayout>
 
+        <!-- ===== Notifications section ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/fm_page_padding_h"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_section_notifications"
+                android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+                android:textColor="@color/fm_accent"
+                android:textFontWeight="700" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:background="?attr/colorOutlineVariant" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="?attr/colorSurface">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+
+            <LinearLayout
+                android:id="@+id/notificationsRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="@dimen/fm_page_padding_h"
+                android:paddingVertical="12dp"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_notifications_label"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Medium"
+                        android:textFontWeight="600" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_notifications_help"
+                        android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+                        android:textSize="12sp"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/notificationsSwitch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/fm_rule_hairline"
+                android:background="?attr/colorOutlineVariant" />
+        </LinearLayout>
+
         <!-- ===== Data section ===== -->
         <LinearLayout
             android:layout_width="match_parent"

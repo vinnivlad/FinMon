@@ -29,6 +29,7 @@ public final class UserPreferences implements TaxRates {
     private static final String KEY_DEFAULT_STOCK_TAX_PCT = "default_stock_tax_pct";
     private static final String KEY_DEFAULT_BOND_TAX_PCT = "default_bond_tax_pct";
     private static final String KEY_THEME_MODE = "theme_mode";
+    private static final String KEY_NOTIFICATIONS_ENABLED = "notifications_enabled";
 
     /** Ukrainian PIT on stock dividends and capital gains, applied at auto-ingest. */
     private static final float DEFAULT_STOCK_TAX_PCT = 15f;
@@ -41,6 +42,7 @@ public final class UserPreferences implements TaxRates {
     private final MutableLiveData<BigDecimal> defaultStockTaxPctLive = new MutableLiveData<>();
     private final MutableLiveData<BigDecimal> defaultBondTaxPctLive = new MutableLiveData<>();
     private final MutableLiveData<ThemeMode> themeModeLive = new MutableLiveData<>();
+    private final MutableLiveData<Boolean> notificationsEnabledLive = new MutableLiveData<>();
 
     /** Listener kept as a field so it isn't GC'd — SharedPreferences holds it weakly. */
     private final SharedPreferences.OnSharedPreferenceChangeListener listener =
@@ -53,6 +55,8 @@ public final class UserPreferences implements TaxRates {
                     defaultBondTaxPctLive.postValue(getDefaultBondTaxPct());
                 } else if (KEY_THEME_MODE.equals(key)) {
                     themeModeLive.postValue(getThemeMode());
+                } else if (KEY_NOTIFICATIONS_ENABLED.equals(key)) {
+                    notificationsEnabledLive.postValue(isNotificationsEnabled());
                 }
             };
 
@@ -63,6 +67,7 @@ public final class UserPreferences implements TaxRates {
         this.defaultStockTaxPctLive.setValue(getDefaultStockTaxPct());
         this.defaultBondTaxPctLive.setValue(getDefaultBondTaxPct());
         this.themeModeLive.setValue(getThemeMode());
+        this.notificationsEnabledLive.setValue(isNotificationsEnabled());
         this.prefs.registerOnSharedPreferenceChangeListener(listener);
     }
 
@@ -127,6 +132,20 @@ public final class UserPreferences implements TaxRates {
     @NonNull
     public LiveData<ThemeMode> themeMode() {
         return themeModeLive;
+    }
+
+    /** Master switch for in-app local notifications (bond payments + weekly P&L). */
+    public boolean isNotificationsEnabled() {
+        return prefs.getBoolean(KEY_NOTIFICATIONS_ENABLED, false);
+    }
+
+    public void setNotificationsEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_NOTIFICATIONS_ENABLED, enabled).apply();
+    }
+
+    @NonNull
+    public LiveData<Boolean> notificationsEnabled() {
+        return notificationsEnabledLive;
     }
 
     @NonNull

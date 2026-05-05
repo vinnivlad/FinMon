@@ -6,6 +6,8 @@ import androidx.appcompat.app.AppCompatDelegate;
 
 import com.my.finmon.data.FinMonDatabase;
 import com.my.finmon.devtools.DevSeeder;
+import com.my.finmon.notifications.NotificationHelper;
+import com.my.finmon.notifications.NotificationScheduler;
 import com.my.finmon.security.AppLockState;
 import com.my.finmon.sync.PortfolioSyncWorker;
 
@@ -56,6 +58,12 @@ public final class FinMonApplication extends Application {
 
         // Periodic background sync — separate from the foreground startup sync below.
         PortfolioSyncWorker.schedule(this);
+
+        // Notifications: register the channel once, then sync the scheduled workers
+        // with the persisted master toggle. Cold start always runs through here so
+        // post-reinstall or post-prefs-clear states converge automatically.
+        NotificationHelper.ensureChannel(this);
+        NotificationScheduler.apply(this, sl.userPreferences().isNotificationsEnabled());
 
         if (wipeAndSeed) {
             // Seed first, then start sync. Both run on the view executor (single thread,

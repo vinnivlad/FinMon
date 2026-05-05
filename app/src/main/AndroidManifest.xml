@@ -9,6 +9,11 @@
         device PIN/pattern/password (DEVICE_CREDENTIAL). USE_BIOMETRIC covers both.
     -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!--
+        Local scheduled notifications (bond payments + weekly P&L summary).
+        Android 13+ requires runtime grant; we ask on first toggle-on in Settings.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".FinMonApplication"
