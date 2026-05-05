@@ -258,6 +258,25 @@ public final class StartupSyncOrchestrator {
     }
 
     private boolean hasNetwork() {
+        // Tolerate transient null state from ConnectivityManager that can occur
+        // immediately after warm-resume from app standby/Doze — Android sometimes
+        // reports the active network as null for ~hundreds of ms while it
+        // re-attaches the foreground app to the active connection. Quick retry
+        // before declaring no connectivity.
+        for (int attempt = 0; attempt < 3; attempt++) {
+            if (probeNetwork()) return true;
+            if (attempt == 2) break;
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return false;
+    }
+
+    private boolean probeNetwork() {
         ConnectivityManager cm = (ConnectivityManager)
                 appContext.getSystemService(Context.CONNECTIVITY_SERVICE);
         if (cm == null) return false;

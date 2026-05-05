@@ -306,19 +306,19 @@ public class GrowthPageFragment extends Fragment {
         }
 
         for (MonthDelta md : rows) {
-            inflateMonthRow(md);
+            inflateMonthRow(md, gd.currency.name());
         }
         binding.bestWorstSection.setVisibility(View.VISIBLE);
     }
 
-    private void inflateMonthRow(@NonNull MonthDelta md) {
+    private void inflateMonthRow(@NonNull MonthDelta md, @NonNull String ccy) {
         ItemBestWorstMonthBinding row = ItemBestWorstMonthBinding.inflate(
                 LayoutInflater.from(requireContext()), binding.bestWorstList, false);
         row.monthLabel.setText(md.month.atDay(1).format(MONTH_YEAR_FMT));
         // Italic for negative months mirrors the JSX styling cue.
         row.monthLabel.setTypeface(row.monthLabel.getTypeface(),
                 md.delta.signum() < 0 ? android.graphics.Typeface.ITALIC : android.graphics.Typeface.NORMAL);
-        row.monthValue.setText(SIGNED_WHOLE.format(md.delta));
+        row.monthValue.setText(SIGNED_WHOLE.format(md.delta) + " " + ccy);
         int color = md.delta.signum() > 0
                 ? R.color.pnl_positive
                 : (md.delta.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);

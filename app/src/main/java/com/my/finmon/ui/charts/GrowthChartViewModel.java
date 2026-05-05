@@ -164,15 +164,26 @@ public final class GrowthChartViewModel extends ViewModel {
                     data.postValue(new GrowthData(outCurrency, points, anyGaps));
                     return;
                 }
-                RawPoint base = raw.get(0);
-                BigDecimal baselinePnl = base.value.subtract(base.invested);
-                if (base.value.signum() == 0) {
-                    // No usable denominator — render empty rather than divide-by-zero.
+                // Skip leading raw points where value=0 — they predate any holdings
+                // in this currency (e.g. UAH bonds were bought before the user's
+                // first USD purchase, so USD snapshots from those early dates carry
+                // valueUsd=0). Anchoring the baseline there would either trip the
+                // divide-by-zero guard or produce a misleading >100% jump on the
+                // first non-zero day. The chart starts where the currency actually
+                // came into existence in the portfolio.
+                int baseIdx = 0;
+                while (baseIdx < raw.size() && raw.get(baseIdx).value.signum() == 0) {
+                    baseIdx++;
+                }
+                if (baseIdx >= raw.size()) {
                     data.postValue(new GrowthData(outCurrency, points, anyGaps));
                     return;
                 }
+                RawPoint base = raw.get(baseIdx);
+                BigDecimal baselinePnl = base.value.subtract(base.invested);
                 BigDecimal denom = base.value.abs();
-                for (RawPoint r : raw) {
+                for (int idx = baseIdx; idx < raw.size(); idx++) {
+                    RawPoint r = raw.get(idx);
                     BigDecimal pnl = r.value.subtract(r.invested);
                     BigDecimal pct = pnl.subtract(baselinePnl)
                             .divide(denom, MathContext.DECIMAL64)

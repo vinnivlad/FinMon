@@ -147,6 +147,7 @@ public class AllocationPageFragment extends Fragment {
         binding.allocationEmpty.setVisibility(View.GONE);
         binding.allocationPie.setVisibility(View.VISIBLE);
 
+        String displayCcy = breakdown.displayCurrency.name();
         int[] palette = resolvePalette();
 
         // ---- Pie ----
@@ -174,10 +175,11 @@ public class AllocationPageFragment extends Fragment {
         binding.allocationPie.invalidate();
 
         // ---- Legend ----
-        renderLegend(slices, palette);
+        renderLegend(slices, palette, displayCcy);
     }
 
-    private void renderLegend(@NonNull List<Slice> slices, @NonNull int[] palette) {
+    private void renderLegend(@NonNull List<Slice> slices, @NonNull int[] palette,
+                              @NonNull String displayCcy) {
         binding.allocationLegend.removeAllViews();
         BigDecimal total = BigDecimal.ZERO;
         for (Slice s : slices) total = total.add(s.value);
@@ -198,7 +200,7 @@ public class AllocationPageFragment extends Fragment {
             BigDecimal pct = s.value.multiply(new BigDecimal("100"))
                     .divide(total, java.math.MathContext.DECIMAL64);
             row.legendPct.setText(PCT.format(pct));
-            row.legendValue.setText(WHOLE.format(s.value));
+            row.legendValue.setText(WHOLE.format(s.value) + " " + displayCcy);
 
             binding.allocationLegend.addView(row.getRoot());
         }

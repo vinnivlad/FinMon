@@ -79,8 +79,11 @@ public final class AllocationViewModel extends ViewModel {
                 LocalDate today = LocalDate.now();
                 LocalDate asOf = computeWindowEnd(today);
                 Currency filterCcy = filter.selectedCurrency().getValue();
-                data.postValue(repo.getAnalyticsAsOf(
-                        asOf, prefs.getDisplayCurrency(), filterCcy).get());
+                // When the global filter is narrowed to a specific currency, render
+                // slice values in that currency (mirrors Value/Growth's native-bucket
+                // branch). "All" falls back to the user's preferred display currency.
+                Currency displayCcy = filterCcy != null ? filterCcy : prefs.getDisplayCurrency();
+                data.postValue(repo.getAnalyticsAsOf(asOf, displayCcy, filterCcy).get());
             } catch (Exception e) {
                 Log.w(TAG, "refresh failed", e);
             }

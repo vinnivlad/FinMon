@@ -265,13 +265,14 @@ public class ValueChartPageFragment extends Fragment {
         Point last = cd.points.get(cd.points.size() - 1);
         BigDecimal delta = last.value.subtract(first.value);
 
-        binding.readoutHighValue.setText(WHOLE.format(hi.value));
+        String ccy = " " + cd.currency.name();
+        binding.readoutHighValue.setText(WHOLE.format(hi.value) + ccy);
         binding.readoutHighSub.setText(hi.date.format(MONTH_YEAR_FMT));
 
-        binding.readoutLowValue.setText(WHOLE.format(lo.value));
+        binding.readoutLowValue.setText(WHOLE.format(lo.value) + ccy);
         binding.readoutLowSub.setText(lo.date.format(MONTH_YEAR_FMT));
 
-        binding.readoutDeltaValue.setText(SIGNED_WHOLE.format(delta));
+        binding.readoutDeltaValue.setText(SIGNED_WHOLE.format(delta) + ccy);
         int deltaColor = delta.signum() > 0
                 ? R.color.pnl_positive
                 : (delta.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
