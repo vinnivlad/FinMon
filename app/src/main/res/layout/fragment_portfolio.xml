@@ -54,12 +54,35 @@
                 android:paddingTop="10dp"
                 android:paddingBottom="10dp">
 
-                <TextView
-                    android:id="@+id/totalsLabel"
-                    android:layout_width="wrap_content"
+                <!-- Kicker row: "PORTFOLIO VALUE" on the left, event-log shortcut
+                     on the right. The shortcut lives here (instead of being a
+                     bottom FAB) so the totals area carries its own affordance —
+                     Add Trade is the primary FAB; this one's a secondary jump. -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/totals_card_label"
-                    android:textAppearance="@style/TextAppearance.FinMon.Kicker" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/totalsLabel"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/totals_card_label"
+                        android:textAppearance="@style/TextAppearance.FinMon.Kicker" />
+
+                    <ImageButton
+                        android:id="@+id/eventLogButton"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/ic_event_log"
+                        android:scaleType="centerInside"
+                        android:background="@android:color/transparent"
+                        android:padding="4dp"
+                        app:tint="@color/fm_ink_soft"
+                        android:contentDescription="@string/event_log_fab_open" />
+                </LinearLayout>
 
                 <!-- Headline number: integer + fraction + currency code -->
                 <LinearLayout

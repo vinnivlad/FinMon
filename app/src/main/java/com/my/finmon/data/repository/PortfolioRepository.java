@@ -36,6 +36,7 @@ import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -841,6 +842,173 @@ public final class PortfolioRepository {
         return new BondTimeline(bond, entries);
     }
 
+    /**
+     * Newest-first list of every recorded event, merged into user-readable rows.
+     * Pairs a trade's two legs into one row, a maturity's bond+cash legs into one,
+     * and a conversion's two cash legs into one — the cash leg of a trade pair is
+     * never useful on its own.
+     *
+     * <p>Drives the Event Log screen. Currency filter (when non-null) keeps rows
+     * whose primary or partner asset matches the chosen currency.
+     */
+    @NonNull
+    public Future<List<EventLogItem>> getEventLog(@Nullable Currency currencyFilter) {
+        return executor.submit(() -> computeEventLogSync(currencyFilter));
+    }
+
+    private List<EventLogItem> computeEventLogSync(@Nullable Currency currencyFilter) {
+        List<EventEntity> all = eventDao.getAllReverseChronological();
+        Map<Long, AssetEntity> assets = new HashMap<>();
+        for (AssetEntity a : assetDao.getAll()) assets.put(a.id, a);
+
+        // Group by exact timestamp — pair siblings (trade legs, maturity legs,
+        // conversion legs) only when they share the same instant.
+        LinkedHashMap<LocalDateTime, List<EventEntity>> buckets = new LinkedHashMap<>();
+        for (EventEntity ev : all) {
+            buckets.computeIfAbsent(ev.timestamp, k -> new ArrayList<>()).add(ev);
+        }
+
+        List<EventLogItem> items = new ArrayList<>(buckets.size());
+        for (Map.Entry<LocalDateTime, List<EventEntity>> e : buckets.entrySet()) {
+            mergeBucket(e.getValue(), assets, items);
+        }
+
+        if (currencyFilter != null) {
+            List<EventLogItem> filtered = new ArrayList<>();
+            for (EventLogItem it : items) {
+                if (it.matchesCurrency(currencyFilter)) filtered.add(it);
+            }
+            return filtered;
+        }
+        return items;
+    }
+
+    /** Per-timestamp merge — emits primary rows and skips siblings. */
+    private void mergeBucket(
+            @NonNull List<EventEntity> bucket,
+            @NonNull Map<Long, AssetEntity> assets,
+            @NonNull List<EventLogItem> out) {
+        Set<Long> consumed = new HashSet<>();
+
+        // Process primaries with explicit pair semantics first so trades, maturities
+        // and conversions can mark their siblings consumed before the standalone-cash
+        // pass runs.
+        for (EventEntity ev : bucket) {
+            if (consumed.contains(ev.id)) continue;
+            AssetEntity asset = assets.get(ev.assetId);
+            if (asset == null) continue;
+
+            if (ev.type == EventType.MATURITY) {
+                AssetEntity bond = ev.incomeSourceAssetId != null
+                        ? assets.get(ev.incomeSourceAssetId) : null;
+                if (bond != null) {
+                    EventEntity bondLeg = findInBucket(
+                            bucket, EventType.OUT, bond.id, consumed);
+                    if (bondLeg != null) consumed.add(bondLeg.id);
+                }
+                out.add(EventLogItem.maturity(ev, asset, bond));
+                consumed.add(ev.id);
+            } else if (ev.type == EventType.CONVERSION_OUT) {
+                EventEntity inLeg = findConversionIn(bucket, consumed);
+                AssetEntity targetAsset = inLeg != null
+                        ? assets.get(inLeg.assetId) : null;
+                out.add(EventLogItem.conversion(
+                        ev, asset, inLeg,
+                        targetAsset != null ? targetAsset.currency : null));
+                if (inLeg != null) consumed.add(inLeg.id);
+                consumed.add(ev.id);
+            } else if (ev.type == EventType.DIVIDEND) {
+                AssetEntity source = ev.incomeSourceAssetId != null
+                        ? assets.get(ev.incomeSourceAssetId) : null;
+                out.add(EventLogItem.income(ev, asset, source));
+                consumed.add(ev.id);
+            } else if (ev.type == EventType.SPLIT) {
+                out.add(EventLogItem.split(ev, asset));
+                consumed.add(ev.id);
+            }
+        }
+
+        // Trade legs: a non-cash IN/OUT in the bucket pairs with a cash OUT/IN in
+        // the matching currency. Process non-cash side first so the cash sibling
+        // gets marked consumed before the standalone-cash pass.
+        for (EventEntity ev : bucket) {
+            if (consumed.contains(ev.id)) continue;
+            AssetEntity asset = assets.get(ev.assetId);
+            if (asset == null || asset.type == AssetType.CASH) continue;
+            if (ev.type != EventType.IN && ev.type != EventType.OUT) continue;
+
+            EventType pairType = ev.type == EventType.IN ? EventType.OUT : EventType.IN;
+            EventEntity cashLeg = findCashLegInBucket(
+                    bucket, assets, pairType, asset.currency, consumed);
+            out.add(EventLogItem.trade(ev, asset, cashLeg));
+            consumed.add(ev.id);
+            if (cashLeg != null) consumed.add(cashLeg.id);
+        }
+
+        // Whatever's left at this point is either: a standalone cash deposit /
+        // withdrawal (cash IN/OUT without an asset-leg sibling), an orphan
+        // CONVERSION_IN whose paired OUT lives elsewhere, or a non-cash IN/OUT
+        // whose pair is missing (data anomaly — render as an unpaired trade).
+        for (EventEntity ev : bucket) {
+            if (consumed.contains(ev.id)) continue;
+            AssetEntity asset = assets.get(ev.assetId);
+            if (asset == null) continue;
+            if (asset.type == AssetType.CASH) {
+                if (ev.type == EventType.IN || ev.type == EventType.CONVERSION_IN) {
+                    out.add(EventLogItem.deposit(ev, asset));
+                } else if (ev.type == EventType.OUT || ev.type == EventType.CONVERSION_OUT) {
+                    out.add(EventLogItem.withdrawal(ev, asset));
+                }
+            } else if (ev.type == EventType.IN || ev.type == EventType.OUT) {
+                // Orphan asset leg — show with no partner; signedAmount falls back to
+                // amount × price.
+                out.add(EventLogItem.trade(ev, asset, null));
+            }
+            consumed.add(ev.id);
+        }
+    }
+
+    @Nullable
+    private static EventEntity findInBucket(
+            @NonNull List<EventEntity> bucket,
+            @NonNull EventType type,
+            long assetId,
+            @NonNull Set<Long> consumed) {
+        for (EventEntity ev : bucket) {
+            if (consumed.contains(ev.id)) continue;
+            if (ev.type == type && ev.assetId == assetId) return ev;
+        }
+        return null;
+    }
+
+    @Nullable
+    private static EventEntity findCashLegInBucket(
+            @NonNull List<EventEntity> bucket,
+            @NonNull Map<Long, AssetEntity> assets,
+            @NonNull EventType type,
+            @NonNull Currency currency,
+            @NonNull Set<Long> consumed) {
+        for (EventEntity ev : bucket) {
+            if (consumed.contains(ev.id)) continue;
+            if (ev.type != type) continue;
+            AssetEntity a = assets.get(ev.assetId);
+            if (a == null || a.type != AssetType.CASH) continue;
+            if (a.currency == currency) return ev;
+        }
+        return null;
+    }
+
+    @Nullable
+    private static EventEntity findConversionIn(
+            @NonNull List<EventEntity> bucket,
+            @NonNull Set<Long> consumed) {
+        for (EventEntity ev : bucket) {
+            if (consumed.contains(ev.id)) continue;
+            if (ev.type == EventType.CONVERSION_IN) return ev;
+        }
+        return null;
+    }
+
     private ExpectedPaymentsResult computeBondPaymentsInWindowSync(
             @NonNull LocalDate windowFrom,
             @NonNull LocalDate windowTo,
@@ -852,12 +1020,19 @@ public final class PortfolioRepository {
         // the whole window sits in the future (e.g. custom 2027..2028).
         LocalDate pastUpTo = windowTo.isBefore(today) ? windowTo : today;
         boolean hasPast = !pastUpTo.isBefore(windowFrom);
-        // Future portion: starts the day after today and ends at windowTo. hasFuture
-        // is false when the window ends on or before today (purely past view).
-        boolean hasFuture = windowTo.isAfter(today);
+        // Future portion: extends through windowTo and is inclusive of today so a
+        // payment scheduled for today gets a marker even before sync has booked the
+        // cash. The dedup set (filled by the past path) keeps a same-day pair from
+        // showing up twice once sync completes.
+        boolean hasFuture = !windowTo.isBefore(today);
 
         for (AssetEntity asset : assetDao.findByType(AssetType.BOND)) {
             if (currencyFilter != null && asset.currency != currencyFilter) continue;
+
+            // Dates already covered by the past (paid) path for this asset; the future
+            // path skips them to avoid duplicating an NBU-projected row for a coupon
+            // that's already recorded as paid.
+            Set<LocalDate> paidDatesForAsset = new HashSet<>();
 
             // ── Past payments from the event log ──────────────────────────
             if (hasPast) {
@@ -866,12 +1041,14 @@ public final class PortfolioRepository {
                     LocalDate d = ev.timestamp.toLocalDate();
                     if (d.isBefore(windowFrom) || d.isAfter(pastUpTo)) continue;
                     acc.add(asset, d, ev.amount, EventType.DIVIDEND, /* paid */ true, d);
+                    paidDatesForAsset.add(d);
                 }
                 EventEntity maturity = eventDao.findMaturityForAsset(asset.id);
                 if (maturity != null) {
                     LocalDate d = maturity.timestamp.toLocalDate();
                     if (!d.isBefore(windowFrom) && !d.isAfter(pastUpTo)) {
                         acc.add(asset, d, maturity.amount, EventType.MATURITY, /* paid */ true, d);
+                        paidDatesForAsset.add(d);
                     }
                 }
             }
@@ -907,9 +1084,12 @@ public final class PortfolioRepository {
                 } catch (Exception ex) {
                     continue;
                 }
-                // Strictly future, and inside the window.
-                if (!d.isAfter(today)) continue;
+                // Today or future, inside the window. Today inclusion gives the
+                // calendar a marker even when sync hasn't ingested yet; the dedup
+                // set prevents a double-count once it has.
+                if (d.isBefore(today)) continue;
                 if (d.isBefore(windowFrom) || d.isAfter(windowTo)) continue;
+                if (paidDatesForAsset.contains(d)) continue;
 
                 BigDecimal amount;
                 EventType type;
@@ -2614,6 +2794,110 @@ public final class PortfolioRepository {
             this.dividends = dividends;
             this.realizedPnl = realizedPnl;
             this.unrealizedPnl = unrealizedPnl;
+        }
+    }
+
+    /**
+     * One row in the Event Log screen. Each kind merges its component {@link EventEntity}
+     * rows into a single user-readable line: trades fold their cash leg in, maturities
+     * fold the bond OUT in, conversions fold both legs together. {@link #primary} carries
+     * the timestamp + amount + price; {@link #partner} (when present) supplies the
+     * "other side" — cash leg of a trade, bond leg of a maturity, or target leg of
+     * a conversion.
+     */
+    public static final class EventLogItem {
+        public enum Kind { BUY, SELL, DEPOSIT, WITHDRAWAL, DIVIDEND, COUPON, MATURITY, CONVERSION, SPLIT }
+
+        @NonNull public final Kind kind;
+        @NonNull public final EventEntity primary;
+        @Nullable public final EventEntity partner;
+        @NonNull public final AssetEntity primaryAsset;
+        /** For trades: null. For income/maturity: the source stock/bond. For conversion: the target cash pile. */
+        @Nullable public final AssetEntity partnerAsset;
+        /** Conversion target currency (= partnerAsset.currency for conversions, null otherwise). */
+        @Nullable public final Currency conversionTargetCurrency;
+
+        private EventLogItem(
+                @NonNull Kind kind,
+                @NonNull EventEntity primary,
+                @Nullable EventEntity partner,
+                @NonNull AssetEntity primaryAsset,
+                @Nullable AssetEntity partnerAsset,
+                @Nullable Currency conversionTargetCurrency) {
+            this.kind = kind;
+            this.primary = primary;
+            this.partner = partner;
+            this.primaryAsset = primaryAsset;
+            this.partnerAsset = partnerAsset;
+            this.conversionTargetCurrency = conversionTargetCurrency;
+        }
+
+        @NonNull
+        static EventLogItem trade(
+                @NonNull EventEntity assetLeg,
+                @NonNull AssetEntity asset,
+                @Nullable EventEntity cashLeg) {
+            Kind k = assetLeg.type == EventType.IN ? Kind.BUY : Kind.SELL;
+            return new EventLogItem(k, assetLeg, cashLeg, asset, null, null);
+        }
+
+        @NonNull
+        static EventLogItem deposit(
+                @NonNull EventEntity ev, @NonNull AssetEntity asset) {
+            return new EventLogItem(Kind.DEPOSIT, ev, null, asset, null, null);
+        }
+
+        @NonNull
+        static EventLogItem withdrawal(
+                @NonNull EventEntity ev, @NonNull AssetEntity asset) {
+            return new EventLogItem(Kind.WITHDRAWAL, ev, null, asset, null, null);
+        }
+
+        @NonNull
+        static EventLogItem income(
+                @NonNull EventEntity ev,
+                @NonNull AssetEntity cashAsset,
+                @Nullable AssetEntity sourceAsset) {
+            // Coupon vs dividend split by the source asset's type — both share
+            // EventType.DIVIDEND on the storage side since 2026-04-26.
+            Kind k = sourceAsset != null && sourceAsset.type == AssetType.BOND
+                    ? Kind.COUPON : Kind.DIVIDEND;
+            return new EventLogItem(k, ev, null, cashAsset, sourceAsset, null);
+        }
+
+        @NonNull
+        static EventLogItem maturity(
+                @NonNull EventEntity cashLeg,
+                @NonNull AssetEntity cashAsset,
+                @Nullable AssetEntity bond) {
+            return new EventLogItem(Kind.MATURITY, cashLeg, null, cashAsset, bond, null);
+        }
+
+        @NonNull
+        static EventLogItem conversion(
+                @NonNull EventEntity outLeg,
+                @NonNull AssetEntity sourceCashAsset,
+                @Nullable EventEntity inLeg,
+                @Nullable Currency targetCurrency) {
+            return new EventLogItem(
+                    Kind.CONVERSION, outLeg, inLeg,
+                    sourceCashAsset, null, targetCurrency);
+        }
+
+        @NonNull
+        static EventLogItem split(
+                @NonNull EventEntity ev, @NonNull AssetEntity asset) {
+            return new EventLogItem(Kind.SPLIT, ev, null, asset, null, null);
+        }
+
+        /** Used by {@link #getEventLog} when a currency filter is active. Matches the
+         *  primary asset's currency, the partner asset's currency (for income/maturity),
+         *  or the conversion target currency. */
+        boolean matchesCurrency(@NonNull Currency c) {
+            if (primaryAsset.currency == c) return true;
+            if (partnerAsset != null && partnerAsset.currency == c) return true;
+            if (conversionTargetCurrency != null && conversionTargetCurrency == c) return true;
+            return false;
         }
     }
 }

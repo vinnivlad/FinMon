@@ -227,8 +227,10 @@
     <string name="notif_channel_name">FinMon alerts</string>
     <string name="notif_channel_description">Bond payment reminders and weekly portfolio summary.</string>
     <string name="notif_bond_today_title">Bond payment today</string>
-    <string name="notif_bond_upcoming_title">Bond payment in 1 week</string>
+    <string name="notif_bond_upcoming_title">Upcoming bond payment</string>
     <string name="notif_bond_count">%1$d bond payments</string>
+    <!-- "in 1d" / "in 7d" suffix used per row in the upcoming-bucket notification body. -->
+    <string name="notif_bond_in_days">in %1$dd</string>
     <string name="notif_weekly_pnl_title">This week\'s portfolio P&amp;L</string>
 
     <!-- Per-asset tax overrides screen -->
@@ -298,6 +300,26 @@
     <string name="stage_name_bond_coupons">Bond coupons</string>
     <string name="stage_name_snapshots">Computing snapshots</string>
     <string name="stage_name_other">Sync</string>
+
+    <!-- Event log screen -->
+    <string name="event_log_title">Event log</string>
+    <string name="event_log_empty">No events recorded yet.</string>
+    <string name="event_log_fab_open">Event log</string>
+    <!-- Event row labels. {0} = ticker / source ticker / from→to currency pair. -->
+    <string name="event_kind_buy">Buy %1$s</string>
+    <string name="event_kind_sell">Sell %1$s</string>
+    <string name="event_kind_deposit">Deposit</string>
+    <string name="event_kind_withdrawal">Withdrawal</string>
+    <string name="event_kind_dividend">Dividend · %1$s</string>
+    <string name="event_kind_coupon">Coupon · %1$s</string>
+    <string name="event_kind_maturity">Redemption · %1$s</string>
+    <string name="event_kind_conversion">Convert · %1$s → %2$s</string>
+    <string name="event_kind_split">Split · %1$s</string>
+    <!-- Sub-row details. -->
+    <string name="event_sub_trade">%1$s · %2$s @ %3$s</string>
+    <string name="event_sub_cash">Cash · %1$s</string>
+    <string name="event_sub_split_ratio">Ratio %1$s</string>
+    <string name="event_sub_conversion_to">→ %1$s %2$s</string>
 
     <!-- App-lock screen -->
     <string name="app_lock_title">FinMon is locked</string>

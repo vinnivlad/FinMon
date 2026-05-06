@@ -129,13 +129,19 @@ public class MainActivity extends AppCompatActivity {
         new GlobalFilterBinder(binding.globalFilter, filterVm, this, this);
 
         // Settings is reachable from the masthead gear, always visible across
-        // destinations. Tapping the gear navigates regardless of which screen
-        // the user is on.
+        // destinations. Skip when we're already on Settings — without an explicit
+        // guard plus singleTop, tapping the gear from Settings stacks duplicate
+        // SettingsFragment instances on the back stack.
         binding.masthead.mastheadSettingsButton.setOnClickListener(v -> {
+            NavDestination current = navController.getCurrentDestination();
+            if (current != null && current.getId() == R.id.settingsFragment) return;
+            NavOptions opts = new NavOptions.Builder()
+                    .setLaunchSingleTop(true)
+                    .build();
             try {
-                navController.navigate(R.id.settingsFragment);
+                navController.navigate(R.id.settingsFragment, null, opts);
             } catch (IllegalArgumentException ignored) {
-                // No-op: graph not ready or already on Settings.
+                // Graph not ready yet — drop silently.
             }
         });
 
@@ -283,6 +289,7 @@ public class MainActivity extends AppCompatActivity {
         if (destinationId == R.id.addTradeFragment)          return R.string.add_trade_title;
         if (destinationId == R.id.manualEventFragment)       return R.string.manual_event_title;
         if (destinationId == R.id.assetTaxOverridesFragment) return R.string.tax_overrides_title;
+        if (destinationId == R.id.eventLogFragment)          return R.string.event_log_title;
         return R.string.app_name;
     }
 

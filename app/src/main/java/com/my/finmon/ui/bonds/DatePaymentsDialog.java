@@ -91,6 +91,12 @@ final class DatePaymentsDialog {
                 ? R.string.bond_detail_type_maturity
                 : R.string.bond_detail_type_coupon));
         row.couponAmount.setText(MONEY.format(p.amount) + " " + p.currency.name());
+        // Paid rows dim to 0.45 alpha — same treatment BondDetailDialog uses for
+        // already-landed payments, so the calendar dialog reads consistently.
+        float alpha = p.paid ? 0.45f : 1.0f;
+        row.couponDate.setAlpha(alpha);
+        row.couponType.setAlpha(alpha);
+        row.couponAmount.setAlpha(alpha);
         container.addView(row.getRoot());
     }
 

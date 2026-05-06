@@ -87,6 +87,8 @@ public class PortfolioFragment extends Fragment {
         // single-item popup and route the tap straight to the form.
         binding.fab.setOnClickListener(v -> NavHostFragment.findNavController(this)
                 .navigate(R.id.action_portfolio_to_addTrade));
+        binding.eventLogButton.setOnClickListener(v -> NavHostFragment.findNavController(this)
+                .navigate(R.id.action_portfolio_to_eventLog));
     }
 
     private void renderHoldings(@Nullable List<WindowedHolding> active) {

@@ -138,6 +138,10 @@ public abstract class EventDao {
     @Query("SELECT * FROM event ORDER BY timestamp ASC, id ASC")
     public abstract List<EventEntity> getAllChronological();
 
+    /** Newest-first variant, drives the Event Log screen. */
+    @Query("SELECT * FROM event ORDER BY timestamp DESC, id DESC")
+    public abstract List<EventEntity> getAllReverseChronological();
+
     /** Wipes the whole table — used by the JSON import flow. */
     @Query("DELETE FROM event")
     public abstract void deleteAll();

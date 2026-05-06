@@ -14,7 +14,17 @@
         <action
             android:id="@+id/action_portfolio_to_addTrade"
             app:destination="@id/addTradeFragment" />
+
+        <action
+            android:id="@+id/action_portfolio_to_eventLog"
+            app:destination="@id/eventLogFragment" />
     </fragment>
+
+    <fragment
+        android:id="@+id/eventLogFragment"
+        android:name="com.my.finmon.ui.eventlog.EventLogFragment"
+        android:label="@string/event_log_title"
+        tools:layout="@layout/fragment_event_log" />
 
     <fragment
         android:id="@+id/addAssetFragment"
