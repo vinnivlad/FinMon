@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Breakdown nav icon — four horizontal text-like lines, the Material "subject"
+    glyph. Reads as "agenda / itemised list", matching the per-currency rows on
+    the breakdown screen. fillColor pulls fm_nav_item_color for state parity.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@color/fm_nav_item_color"
+        android:pathData="M14,17H4v2h10v-2zM20,9H4v2h16V9zM4,15h16v-2H4v2zM4,5v2h16V5H4z" />
+</vector>

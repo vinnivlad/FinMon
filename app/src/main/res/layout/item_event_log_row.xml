@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Single event row — two-line layout matching the Holdings list typography.
+    Row 1: serif title (event kind + ticker) ←→ Mono signed amount + currency code.
+    Row 2: small Inter caps subtitle (asset type / quantity / target leg) ←→
+           optional secondary mono detail (conversion target amount, split ratio).
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="@dimen/fm_page_padding_h"
+    android:paddingVertical="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:baselineAligned="true">
+
+        <TextView
+            android:id="@+id/eventTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.FinMon.Title.Medium"
+            android:textFontWeight="600"
+            tools:text="Buy VOO" />
+
+        <TextView
+            android:id="@+id/eventAmount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+            android:layout_marginStart="8dp"
+            tools:text="−3,750.00" />
+
+        <TextView
+            android:id="@+id/eventCurrency"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+            android:layout_marginStart="6dp"
+            tools:text="USD" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="2dp">
+
+        <TextView
+            android:id="@+id/eventSubtitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+            android:textColor="@color/fm_ink_mute"
+            tools:text="STOCK · 25 @ 150.00" />
+
+        <TextView
+            android:id="@+id/eventDetail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.FinMon.Mono.Small"
+            android:textColor="@color/fm_ink_mute"
+            android:layout_marginStart="8dp"
+            android:visibility="gone"
+            tools:text="→ 1,080 USD"
+            tools:visibility="visible" />
+    </LinearLayout>
+</LinearLayout>

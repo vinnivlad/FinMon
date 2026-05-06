@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Portfolio nav icon — three stacked horizontal bars of decreasing length, the
+    Material "sort" glyph. fillColor pulls from fm_nav_item_color so the active /
+    inactive states match ic_bond and ic_market in the bottom nav.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@color/fm_nav_item_color"
+        android:pathData="M3,6v2h18V6H3zM3,13h12v-2H3v2zM3,18h6v-2H3v2z" />
+</vector>

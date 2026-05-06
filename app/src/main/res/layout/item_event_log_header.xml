@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Date group header — Inter caps kicker + 1dp ink rule below.
+    Top rule is omitted to keep stacked headers visually grouped with their
+    rows; the bottom rule separates the header from the first row.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_marginTop="14dp"
+    android:paddingHorizontal="@dimen/fm_page_padding_h">
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/fm_rule_strong"
+        android:background="?attr/colorOutline" />
+
+    <TextView
+        android:id="@+id/dateHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingVertical="6dp"
+        android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+        android:textColor="?attr/colorOnBackground"
+        android:textFontWeight="700"
+        tools:text="WEDNESDAY · 6 MAY 2026" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/fm_rule_hairline"
+        android:background="?attr/colorOutlineVariant" />
+</LinearLayout>
