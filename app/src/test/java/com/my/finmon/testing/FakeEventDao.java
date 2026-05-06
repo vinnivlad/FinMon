@@ -8,10 +8,12 @@ import com.my.finmon.data.model.EventType;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * In-memory fake of {@link EventDao}. Assigns auto-incrementing ids on insert. Honors
@@ -177,6 +179,13 @@ public final class FakeEventDao extends EventDao {
         out.sort(Comparator.<EventEntity, LocalDateTime>comparing(e -> e.timestamp)
                 .thenComparingLong(e -> e.id));
         return out;
+    }
+
+    @Override
+    public List<EventEntity> getAllReverseChronological() {
+        List<EventEntity> reversed = new ArrayList<>(rows);
+        Collections.reverse(reversed);
+        return reversed;
     }
 
     @Override
