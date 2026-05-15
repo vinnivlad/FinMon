@@ -7,14 +7,17 @@ import androidx.room.Database;
 import androidx.room.Room;
 import androidx.room.RoomDatabase;
 import androidx.room.TypeConverters;
+import androidx.room.migration.Migration;
 import androidx.sqlite.db.SupportSQLiteDatabase;
 
 import com.my.finmon.data.dao.AssetDao;
+import com.my.finmon.data.dao.BondSchedulePaymentDao;
 import com.my.finmon.data.dao.EventDao;
 import com.my.finmon.data.dao.ExchangeRateDao;
 import com.my.finmon.data.dao.PortfolioValueDao;
 import com.my.finmon.data.dao.StockPriceDao;
 import com.my.finmon.data.entity.AssetEntity;
+import com.my.finmon.data.entity.BondSchedulePaymentEntity;
 import com.my.finmon.data.entity.EventEntity;
 import com.my.finmon.data.entity.ExchangeRateEntity;
 import com.my.finmon.data.entity.PortfolioValueSnapshotEntity;
@@ -26,9 +29,10 @@ import com.my.finmon.data.entity.StockPriceEntity;
                 EventEntity.class,
                 ExchangeRateEntity.class,
                 StockPriceEntity.class,
-                PortfolioValueSnapshotEntity.class
+                PortfolioValueSnapshotEntity.class,
+                BondSchedulePaymentEntity.class
         },
-        version = 7,
+        version = 8,
         exportSchema = true
 )
 @TypeConverters(Converters.class)
@@ -47,6 +51,30 @@ public abstract class FinMonDatabase extends RoomDatabase {
     public abstract StockPriceDao stockPriceDao();
 
     public abstract PortfolioValueDao portfolioValueDao();
+
+    public abstract BondSchedulePaymentDao bondSchedulePaymentDao();
+
+    /**
+     * v7 → v8: adds the {@code bond_schedule_payment} cache so NBU coupon schedules
+     * survive across app launches and the bond being eventually dropped from NBU's
+     * feed at maturity. Preserves existing data — only creates the new table + index.
+     */
+    static final Migration MIGRATION_7_8 = new Migration(7, 8) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `bond_schedule_payment` ("
+                    + "`assetId` INTEGER NOT NULL, "
+                    + "`payDate` TEXT NOT NULL, "
+                    + "`payType` TEXT NOT NULL, "
+                    + "`payVal` TEXT NOT NULL, "
+                    + "PRIMARY KEY(`assetId`, `payDate`, `payType`), "
+                    + "FOREIGN KEY(`assetId`) REFERENCES `asset`(`id`) "
+                    + "ON UPDATE NO ACTION ON DELETE CASCADE)");
+            db.execSQL("CREATE INDEX IF NOT EXISTS "
+                    + "`index_bond_schedule_payment_assetId` "
+                    + "ON `bond_schedule_payment`(`assetId`)");
+        }
+    };
 
     /**
      * Seeds the three cash-pile assets on first DB creation.
@@ -76,8 +104,9 @@ public abstract class FinMonDatabase extends RoomDatabase {
                                     FinMonDatabase.class,
                                     DB_NAME)
                             .addCallback(SEED_CALLBACK)
-                            // Dev only: wipe the DB on any schema change. Remove and
-                            // write a proper @Migration once there's data worth keeping.
+                            .addMigrations(MIGRATION_7_8)
+                            // Dev safety net for un-migrated hops. Remove once the app
+                            // owns a real migration chain for prod releases.
                             .fallbackToDestructiveMigration()
                             .build();
                     INSTANCE = local;

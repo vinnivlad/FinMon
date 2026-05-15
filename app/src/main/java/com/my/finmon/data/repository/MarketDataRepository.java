@@ -2,8 +2,10 @@ package com.my.finmon.data.repository;
 
 import androidx.annotation.NonNull;
 
+import com.my.finmon.data.dao.BondSchedulePaymentDao;
 import com.my.finmon.data.dao.ExchangeRateDao;
 import com.my.finmon.data.dao.StockPriceDao;
+import com.my.finmon.data.entity.BondSchedulePaymentEntity;
 import com.my.finmon.data.entity.ExchangeRateEntity;
 import com.my.finmon.data.entity.StockPriceEntity;
 import com.my.finmon.data.model.Currency;
@@ -47,6 +49,7 @@ public final class MarketDataRepository {
     private final NbuClient nbuClient;
     private final StockPriceDao stockPriceDao;
     private final ExchangeRateDao exchangeRateDao;
+    private final BondSchedulePaymentDao bondScheduleDao;
     private final ExecutorService executor;
 
     public MarketDataRepository(
@@ -55,12 +58,14 @@ public final class MarketDataRepository {
             @NonNull NbuClient nbuClient,
             @NonNull StockPriceDao stockPriceDao,
             @NonNull ExchangeRateDao exchangeRateDao,
+            @NonNull BondSchedulePaymentDao bondScheduleDao,
             @NonNull ExecutorService executor) {
         this.yahooClient = yahooClient;
         this.frankfurterClient = frankfurterClient;
         this.nbuClient = nbuClient;
         this.stockPriceDao = stockPriceDao;
         this.exchangeRateDao = exchangeRateDao;
+        this.bondScheduleDao = bondScheduleDao;
         this.executor = executor;
     }
 
@@ -174,6 +179,59 @@ public final class MarketDataRepository {
     @NonNull
     public Future<NbuBondDto> findBondByIsin(@NonNull String isin) {
         return executor.submit(() -> nbuClient.findByIsin(isin));
+    }
+
+    /**
+     * NBU-with-cache schedule lookup. Tries the live NBU feed first; on success the
+     * schedule is mirrored into the {@code bond_schedule_payment} table so it survives
+     * the bond eventually being dropped from {@code depo_securities} (matured bonds
+     * are removed entirely). On NBU miss, falls back to the persisted cache and
+     * synthesises a minimal DTO carrying just the {@code payments} list — that's all
+     * existing callers consume.
+     *
+     * <p>Network failures bubble up as before; only "NBU returned no entry for this
+     * ISIN" triggers the cache fallback. {@code null} return means neither source had
+     * data.
+     */
+    @NonNull
+    public Future<NbuBondDto> fetchOrRecallBondSchedule(long assetId, @NonNull String isin) {
+        return executor.submit(() -> {
+            NbuBondDto live = nbuClient.findByIsin(isin);
+            if (live != null && live.payments != null && !live.payments.isEmpty()) {
+                List<BondSchedulePaymentEntity> rows = new ArrayList<>(live.payments.size());
+                for (NbuBondDto.Payment p : live.payments) {
+                    if (p == null || p.pay_date == null || p.pay_type == null || p.pay_val == null) continue;
+                    LocalDate d;
+                    try {
+                        d = LocalDate.parse(p.pay_date);
+                    } catch (Exception ex) {
+                        continue;
+                    }
+                    BondSchedulePaymentEntity row = new BondSchedulePaymentEntity();
+                    row.assetId = assetId;
+                    row.payDate = d;
+                    row.payType = p.pay_type;
+                    row.payVal = BigDecimal.valueOf(p.pay_val);
+                    rows.add(row);
+                }
+                bondScheduleDao.replaceForAsset(assetId, rows);
+                return live;
+            }
+
+            List<BondSchedulePaymentEntity> cached = bondScheduleDao.findByAsset(assetId);
+            if (cached.isEmpty()) return null;
+            NbuBondDto synth = new NbuBondDto();
+            synth.cpcode = isin;
+            synth.payments = new ArrayList<>(cached.size());
+            for (BondSchedulePaymentEntity e : cached) {
+                NbuBondDto.Payment p = new NbuBondDto.Payment();
+                p.pay_date = e.payDate.toString();
+                p.pay_type = e.payType;
+                p.pay_val = e.payVal.doubleValue();
+                synth.payments.add(p);
+            }
+            return synth;
+        });
     }
 
     /**

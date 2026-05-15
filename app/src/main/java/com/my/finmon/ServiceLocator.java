@@ -138,6 +138,7 @@ public final class ServiceLocator {
                 nbuClient,
                 database.stockPriceDao(),
                 database.exchangeRateDao(),
+                database.bondSchedulePaymentDao(),
                 ioExecutor);
 
         this.importExportRepository = new ImportExportRepository(

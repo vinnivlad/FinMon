@@ -398,9 +398,13 @@ public final class PortfolioRepository {
         sorted.sort(Comparator.comparing(c -> c.at));
 
         int written = 0;
-        LocalDateTime now = LocalDateTime.now();
+        LocalDate today = LocalDate.now();
         for (DividendIngest c : sorted) {
-            if (c.at.isAfter(now)) continue;  // future coupon — wait until it pays
+            // Filter by calendar date, not timestamp. NBU's pay_date is date-precision and
+            // we synthesise the timestamp at 09:00 — comparing to wall-clock time would
+            // reject a maturity-day coupon if the sync ran before 09:00, while the
+            // companion redemption (date-gated, no time check) gets written anyway.
+            if (c.at.toLocalDate().isAfter(today)) continue;
             if (c.perShareAmount == null || c.perShareAmount.signum() <= 0) continue;
 
             LocalDateTime startOfDay = c.at.toLocalDate().atStartOfDay();
@@ -531,10 +535,19 @@ public final class PortfolioRepository {
                 if (maturity == null || maturity.timestamp.isAfter(upTo)) continue;
 
                 BigDecimal invested = BigDecimal.ZERO;
+                BigDecimal redeemedQty = BigDecimal.ZERO;
+                BigDecimal redeemedFace = BigDecimal.ZERO;
                 List<EventEntity> bondEvents = eventDao.getByAssetAsOf(bondId, upTo);
                 for (EventEntity e : bondEvents) {
                     if (e.type == EventType.IN) {
                         invested = invested.add(e.amount.multiply(e.price));
+                    } else if (e.type == EventType.OUT
+                            && !e.timestamp.isAfter(maturity.timestamp)
+                            && !e.timestamp.isBefore(maturity.timestamp)) {
+                        // OUT leg paired with the MATURITY cash leg shares its timestamp
+                        // (insertTradePair). amount = qty redeemed, price = face value.
+                        redeemedQty = e.amount;
+                        redeemedFace = e.price;
                     }
                 }
 
@@ -554,6 +567,8 @@ public final class PortfolioRepository {
                         // Redemption-event date — not the bond's contractual maturity,
                         // since manual or off-schedule redemptions may differ.
                         maturity.timestamp.toLocalDate(),
+                        redeemedQty,
+                        redeemedFace,
                         invested,
                         coupons,
                         principal,
@@ -2552,6 +2567,10 @@ public final class PortfolioRepository {
         @Nullable public final String name;
         @NonNull public final Currency currency;
         @Nullable public final LocalDate maturityDate;
+        /** Units redeemed — taken from the OUT leg of the redemption pair. */
+        @NonNull public final BigDecimal qty;
+        /** Face value per unit — taken from the OUT leg's price. */
+        @NonNull public final BigDecimal face;
         @NonNull public final BigDecimal invested;
         @NonNull public final BigDecimal couponsReceived;
         @NonNull public final BigDecimal principalReturned;
@@ -2563,6 +2582,8 @@ public final class PortfolioRepository {
                 @Nullable String name,
                 @NonNull Currency currency,
                 @Nullable LocalDate maturityDate,
+                @NonNull BigDecimal qty,
+                @NonNull BigDecimal face,
                 @NonNull BigDecimal invested,
                 @NonNull BigDecimal couponsReceived,
                 @NonNull BigDecimal principalReturned,
@@ -2572,6 +2593,8 @@ public final class PortfolioRepository {
             this.name = name;
             this.currency = currency;
             this.maturityDate = maturityDate;
+            this.qty = qty;
+            this.face = face;
             this.invested = invested;
             this.couponsReceived = couponsReceived;
             this.principalReturned = principalReturned;

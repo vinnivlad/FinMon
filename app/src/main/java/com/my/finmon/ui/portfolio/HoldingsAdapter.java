@@ -274,9 +274,24 @@ public final class HoldingsAdapter extends ListAdapter<HoldingsAdapter.Item, Rec
                             R.string.matured_row_title, b.ticker, b.currency.name());
             ticker.setText(title);
 
-            maturityLine.setText(b.maturityDate != null
+            // Line 2 mirrors active rows' kicker: TYPE · CCY · qty @ face · Matured date.
+            // qty/face come from the OUT leg of the redemption pair, so face is the
+            // per-unit redemption price even on off-schedule redemptions.
+            String ccy = b.currency.name();
+            StringBuilder line2 = new StringBuilder()
+                    .append("BOND")
+                    .append(" · ")
+                    .append(ccy);
+            if (b.qty.signum() != 0) {
+                line2.append("  ·  ")
+                        .append(QTY.format(b.qty))
+                        .append(" @ ")
+                        .append(MONEY.format(b.face));
+            }
+            line2.append("  ·  ").append(b.maturityDate != null
                     ? itemView.getContext().getString(R.string.matured_row_matured_on, b.maturityDate)
                     : itemView.getContext().getString(R.string.matured_row_matured_unknown));
+            maturityLine.setText(line2.toString());
 
             pnl.setText(SIGNED_MONEY.format(b.realizedPnl) + " " + b.currency.name());
             pnl.setTextColor(ContextCompat.getColor(itemView.getContext(), pnlColor(b.realizedPnl)));

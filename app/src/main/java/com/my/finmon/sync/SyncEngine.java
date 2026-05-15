@@ -169,9 +169,11 @@ public final class SyncEngine {
         List<AssetEntity> bonds = sl.database().assetDao().findByType(AssetType.BOND);
         LocalDate today = LocalDate.now();
 
-        // Matured bonds are dropped from NBU's depo_securities feed entirely; skipping
-        // them here means a "missing from NBU" finding for the remainder is a real
-        // signal worth surfacing to the user, not the routine matured-bond case.
+        // Matured bonds are dropped from NBU's depo_securities feed entirely. We still
+        // give them one pass through the ingest below so a maturity-day coupon that
+        // missed the first run (e.g. sync fired before 09:00 on maturity day and got
+        // gated as future-stamped) has a chance to land. NBU is whole-list cached, so
+        // the extra ISIN probe is essentially free; absence is expected and not surfaced.
         Set<Long> maturedIds = new HashSet<>();
         for (Long id : sl.database().eventDao().findMaturedBondIds()) {
             if (id != null) maturedIds.add(id);
@@ -189,7 +191,6 @@ public final class SyncEngine {
         Set<Long> upToDateIds = new HashSet<>();
         for (AssetEntity b : bonds) {
             if (b.isin == null || b.isin.isBlank()) continue;
-            if (maturedIds.contains(b.id)) continue;
             LocalDateTime latest = sl.database().eventDao().findLatestDividendTimestamp(b.id);
             if (latest != null && !latest.toLocalDate().isBefore(today)) {
                 upToDateIds.add(b.id);
@@ -199,7 +200,6 @@ public final class SyncEngine {
         int total = 0;
         for (AssetEntity b : bonds) {
             if (b.isin == null || b.isin.isBlank()) continue;
-            if (maturedIds.contains(b.id)) continue;
             if (upToDateIds.contains(b.id)) continue;
             total++;
         }
@@ -208,7 +208,6 @@ public final class SyncEngine {
         List<String> missingFromNbu = new ArrayList<>();
         for (AssetEntity bond : bonds) {
             if (bond.isin == null || bond.isin.isBlank()) continue;
-            if (maturedIds.contains(bond.id)) continue;  // matured — expected absence
             if (upToDateIds.contains(bond.id)) {
                 Log.i(TAG, "NBU skip " + bond.ticker + " — last coupon already at/after yesterday");
                 continue;
@@ -216,17 +215,19 @@ public final class SyncEngine {
             idx++;
             cb.onProgress(Stage.BOND_COUPONS, idx, total, bond.ticker);
 
+            boolean matured = maturedIds.contains(bond.id);
+
             NbuBondDto dto;
             try {
-                dto = md.findBondByIsin(bond.isin).get();
+                dto = md.fetchOrRecallBondSchedule(bond.id, bond.isin).get();
             } catch (Exception e) {
                 Log.w(TAG, "NBU lookup threw for " + bond.ticker, e);
-                missingFromNbu.add(bond.ticker + " (" + bond.isin + ")");
+                if (!matured) missingFromNbu.add(bond.ticker + " (" + bond.isin + ")");
                 continue;
             }
             if (dto == null || dto.payments == null) {
-                Log.i(TAG, "NBU has no schedule for " + bond.isin);
-                missingFromNbu.add(bond.ticker + " (" + bond.isin + ")");
+                Log.i(TAG, "NBU + cache have no schedule for " + bond.isin);
+                if (!matured) missingFromNbu.add(bond.ticker + " (" + bond.isin + ")");
                 continue;
             }
 

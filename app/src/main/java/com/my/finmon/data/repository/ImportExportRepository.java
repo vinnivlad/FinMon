@@ -388,7 +388,7 @@ public final class ImportExportRepository {
 
             NbuBondDto dto;
             try {
-                dto = marketData.findBondByIsin(pa.isin).get();
+                dto = marketData.fetchOrRecallBondSchedule(bond.id, pa.isin).get();
             } catch (Exception e) {
                 Log.w(TAG, "NBU lookup threw for " + pa.ticker, e);
                 missingFromNbu.add(pa.ticker + " (" + pa.isin + ")");
