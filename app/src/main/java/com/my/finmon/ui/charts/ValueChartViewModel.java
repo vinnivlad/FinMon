@@ -21,6 +21,7 @@ import com.my.finmon.prefs.UserPreferences;
 import com.my.finmon.ui.filter.FilterPeriod;
 import com.my.finmon.ui.filter.GlobalFilterViewModel;
 import com.my.finmon.ui.filter.GlobalFilterViewModel.CustomRange;
+import com.my.finmon.util.PortfolioReturnSeries;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -219,10 +220,19 @@ public final class ValueChartViewModel extends ViewModel {
 
             BigDecimal pnl = last.value.subtract(last.invested)
                     .subtract(first.value.subtract(first.invested));
+            // Headline percentage uses the same series + helper as the Portfolio
+            // totals card and Growth chart, so all three render identical numbers.
+            List<BigDecimal> values = new ArrayList<>(points.size());
+            List<BigDecimal> investeds = new ArrayList<>(points.size());
+            for (Point p : points) {
+                values.add(p.value);
+                investeds.add(p.invested);
+            }
+            List<BigDecimal> pcts = PortfolioReturnSeries.cumulativePct(values, investeds);
             BigDecimal pct = null;
-            if (first.value.signum() != 0) {
-                pct = pnl.divide(first.value.abs(), java.math.MathContext.DECIMAL64)
-                        .multiply(new BigDecimal("100"));
+            for (int idx = pcts.size() - 1; idx >= 0; idx--) {
+                BigDecimal p = pcts.get(idx);
+                if (p != null) { pct = p; break; }
             }
             return new PeriodTotals(currency, last.value, last.invested, pnl, pct);
         }

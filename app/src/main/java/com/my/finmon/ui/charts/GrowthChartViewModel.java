@@ -21,33 +21,28 @@ import com.my.finmon.prefs.UserPreferences;
 import com.my.finmon.ui.filter.FilterPeriod;
 import com.my.finmon.ui.filter.GlobalFilterViewModel;
 import com.my.finmon.ui.filter.GlobalFilterViewModel.CustomRange;
+import com.my.finmon.util.PortfolioReturnSeries;
 
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Backs the Charts → Growth page. For each snapshot point in the active window,
- * computes percent growth of market P&amp;L relative to the value at window-start:
+ * Backs the Charts → Growth page. Renders cumulative time-weighted return (TWR)
+ * over the active window — the industry-standard way to express portfolio
+ * performance independently of when and how much cash was deposited or
+ * withdrawn.
  *
- * <pre>
- *   pnl(t)       = value(t) − invested(t)
- *   baselinePnl  = value(start) − invested(start)
- *   growth(t)    = (pnl(t) − baselinePnl) / value(start) × 100
- * </pre>
- *
- * <p>Capital deposits during the window add equally to {@code value} and
- * {@code invested}, so they cancel from {@code pnl(t) − baselinePnl} — the curve
- * is purely market-driven, matching the project's "isolate market P&L from cash
- * flows" core. Anchored at 0% at the left edge; descends below zero on losses.
+ * <p>For each point the rendered percent is {@code pnl(t) / invested(t)},
+ * anchored at 0 % on the first point of the window where the portfolio
+ * actually exists. See {@link PortfolioReturnSeries} for the formula and
+ * its dust-immunity argument.
  */
 public final class GrowthChartViewModel extends ViewModel {
 
     private static final String TAG = "GrowthChartVM";
-    private static final BigDecimal HUNDRED = new BigDecimal("100");
 
     private final PortfolioRepository repo;
     private final UserPreferences prefs;
@@ -164,30 +159,19 @@ public final class GrowthChartViewModel extends ViewModel {
                     data.postValue(new GrowthData(outCurrency, points, anyGaps));
                     return;
                 }
-                // Skip leading raw points where value=0 — they predate any holdings
-                // in this currency (e.g. UAH bonds were bought before the user's
-                // first USD purchase, so USD snapshots from those early dates carry
-                // valueUsd=0). Anchoring the baseline there would either trip the
-                // divide-by-zero guard or produce a misleading >100% jump on the
-                // first non-zero day. The chart starts where the currency actually
-                // came into existence in the portfolio.
-                int baseIdx = 0;
-                while (baseIdx < raw.size() && raw.get(baseIdx).value.signum() == 0) {
-                    baseIdx++;
+                List<BigDecimal> values = new ArrayList<>(raw.size());
+                List<BigDecimal> investeds = new ArrayList<>(raw.size());
+                for (RawPoint r : raw) {
+                    values.add(r.value);
+                    investeds.add(r.invested);
                 }
-                if (baseIdx >= raw.size()) {
-                    data.postValue(new GrowthData(outCurrency, points, anyGaps));
-                    return;
-                }
-                RawPoint base = raw.get(baseIdx);
-                BigDecimal baselinePnl = base.value.subtract(base.invested);
-                BigDecimal denom = base.value.abs();
-                for (int idx = baseIdx; idx < raw.size(); idx++) {
+                List<BigDecimal> pcts = PortfolioReturnSeries.cumulativePct(values, investeds);
+                for (int idx = 0; idx < raw.size(); idx++) {
+                    BigDecimal pct = pcts.get(idx);
+                    // Pre-anchor entries are null — the portfolio didn't exist
+                    // in this currency yet, so the curve starts later.
+                    if (pct == null) continue;
                     RawPoint r = raw.get(idx);
-                    BigDecimal pnl = r.value.subtract(r.invested);
-                    BigDecimal pct = pnl.subtract(baselinePnl)
-                            .divide(denom, MathContext.DECIMAL64)
-                            .multiply(HUNDRED);
                     points.add(new Point(r.date, pct, r.value, r.invested));
                 }
                 data.postValue(new GrowthData(outCurrency, points, anyGaps));

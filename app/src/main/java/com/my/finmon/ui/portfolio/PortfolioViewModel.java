@@ -21,9 +21,9 @@ import com.my.finmon.prefs.UserPreferences;
 import com.my.finmon.ui.filter.FilterPeriod;
 import com.my.finmon.ui.filter.GlobalFilterViewModel;
 import com.my.finmon.ui.filter.GlobalFilterViewModel.CustomRange;
+import com.my.finmon.util.PortfolioReturnSeries;
 
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -140,6 +140,10 @@ public final class PortfolioViewModel extends ViewModel {
 
             BigDecimal firstValue = null, firstInvested = null;
             BigDecimal lastValue = null, lastInvested = null;
+            // Full window-series of (value, invested) for the TWR headline. Kept
+            // parallel — same length, same chronological order.
+            List<BigDecimal> seriesValues = new ArrayList<>();
+            List<BigDecimal> seriesInvesteds = new ArrayList<>();
             Currency outCurrency;
             // Ribbon entries — populated only in All-currency mode from today's
             // PortfolioTotals. Specific-currency mode has no ribbon (drilled into
@@ -166,6 +170,10 @@ public final class PortfolioViewModel extends ViewModel {
                         ConvertedSnapshot last = snaps.get(snaps.size() - 1);
                         lastValue = last.value;
                         lastInvested = last.invested;
+                        for (ConvertedSnapshot s : snaps) {
+                            seriesValues.add(s.value);
+                            seriesInvesteds.add(s.invested);
+                        }
                     }
                 }
                 if (lifetime != null) {
@@ -176,6 +184,8 @@ public final class PortfolioViewModel extends ViewModel {
                     if (firstValue == null) { firstValue = v; firstInvested = i; }
                     lastValue = v;
                     lastInvested = i;
+                    seriesValues.add(v);
+                    seriesInvesteds.add(i);
                     ribbon = buildRibbon(lifetime.valueByDisplayCurrency, display);
                     hasFxGaps = lifetime.hasFxGaps;
                 }
@@ -191,6 +201,10 @@ public final class PortfolioViewModel extends ViewModel {
                         ConvertedSnapshot last = snaps.get(snaps.size() - 1);
                         lastValue = last.value;
                         lastInvested = last.invested;
+                        for (ConvertedSnapshot s : snaps) {
+                            seriesValues.add(s.value);
+                            seriesInvesteds.add(s.invested);
+                        }
                     }
                 }
                 if (lifetime != null) {
@@ -200,6 +214,8 @@ public final class PortfolioViewModel extends ViewModel {
                     if (firstValue == null) { firstValue = v; firstInvested = i; }
                     lastValue = v;
                     lastInvested = i;
+                    seriesValues.add(v);
+                    seriesInvesteds.add(i);
                 }
             }
 
@@ -207,10 +223,16 @@ public final class PortfolioViewModel extends ViewModel {
 
             BigDecimal pnl = lastValue.subtract(lastInvested)
                     .subtract(firstValue.subtract(firstInvested));
+            // Headline percentage — agrees with the Growth chart's endpoint
+            // because both consume the same snapshot series through the same
+            // helper, and matches the Breakdown tab's "pnl / invested" idea.
             BigDecimal pct = null;
-            if (firstValue.signum() != 0) {
-                pct = pnl.divide(firstValue.abs(), MathContext.DECIMAL64)
-                        .multiply(new BigDecimal("100"));
+            if (!seriesValues.isEmpty()) {
+                List<BigDecimal> pcts = PortfolioReturnSeries.cumulativePct(seriesValues, seriesInvesteds);
+                for (int idx = pcts.size() - 1; idx >= 0; idx--) {
+                    BigDecimal p = pcts.get(idx);
+                    if (p != null) { pct = p; break; }
+                }
             }
             return new TotalsCardData(
                     outCurrency, lastValue, lastInvested, pnl, pct, ribbon, hasFxGaps);
