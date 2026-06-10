@@ -157,7 +157,6 @@ public class GrowthPageFragment extends Fragment {
 
         List<ILineDataSet> sets = new ArrayList<>();
         List<Entry> current = new ArrayList<>();
-        boolean currentPositive = true;
 
         for (int i = 0; i < gd.points.size(); i++) {
             Point p = gd.points.get(i);
@@ -166,7 +165,6 @@ public class GrowthPageFragment extends Fragment {
 
             if (current.isEmpty()) {
                 current.add(new Entry(x, y));
-                currentPositive = y >= 0f;
                 continue;
             }
 
@@ -179,19 +177,18 @@ public class GrowthPageFragment extends Fragment {
                 float t = -lastY / (y - lastY);
                 float zx = lastX + t * (x - lastX);
                 current.add(new Entry(zx, 0f));
-                sets.add(buildSet(current, currentPositive ? posColor : negColor));
+                sets.add(buildSet(current, segmentColor(current, posColor, negColor)));
                 // Start a new segment from the same zero point so the two colored
                 // lines meet exactly on the y=0 crossing.
                 current = new ArrayList<>();
                 current.add(new Entry(zx, 0f));
                 current.add(new Entry(x, y));
-                currentPositive = y >= 0f;
             } else {
                 current.add(new Entry(x, y));
             }
         }
         if (!current.isEmpty()) {
-            sets.add(buildSet(current, currentPositive ? posColor : negColor));
+            sets.add(buildSet(current, segmentColor(current, posColor, negColor)));
         }
 
         binding.growthChart.getXAxis().setValueFormatter(new ValueFormatter() {
@@ -204,6 +201,29 @@ public class GrowthPageFragment extends Fragment {
         binding.growthChart.setData(new LineData(sets));
         binding.growthChart.notifyDataSetChanged();
         binding.growthChart.invalidate();
+    }
+
+    /**
+     * Pick a segment's color from its data rather than tracking sign while walking.
+     * The window is anchored at exactly 0 % (see {@link PortfolioReturnSeries}), so
+     * the opening point of the first segment is neither positive nor negative —
+     * keying color off that point painted a below-zero opening run green. A segment
+     * is bounded by interpolated zero-crossings, so every off-axis point in it
+     * shares one sign; the largest-magnitude entry gives it. An all-zero (flat)
+     * segment has no sign and falls through to the positive color harmlessly (its
+     * fill collapses onto the zero line).
+     */
+    private static int segmentColor(@NonNull List<Entry> seg, int posColor, int negColor) {
+        float signedAtMaxAbs = 0f;
+        float maxAbs = -1f;
+        for (Entry e : seg) {
+            float abs = Math.abs(e.getY());
+            if (abs > maxAbs) {
+                maxAbs = abs;
+                signedAtMaxAbs = e.getY();
+            }
+        }
+        return signedAtMaxAbs < 0f ? negColor : posColor;
     }
 
     @NonNull
@@ -245,6 +265,22 @@ public class GrowthPageFragment extends Fragment {
                 ? R.color.pnl_positive
                 : (end.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
         binding.growthHeadline.setTextColor(ContextCompat.getColor(requireContext(), color));
+
+        // Absolute growth beside the percentage, in the series' currency (display
+        // currency in All mode, the filtered currency otherwise). Same sign-coloring.
+        BigDecimal abs = gd.endAbsolute();
+        if (abs != null) {
+            binding.growthHeadlineAbsolute.setText(
+                    SIGNED_WHOLE.format(abs) + " " + gd.currency.name());
+            int absColor = abs.signum() > 0
+                    ? R.color.pnl_positive
+                    : (abs.signum() < 0 ? R.color.pnl_negative : R.color.pnl_neutral);
+            binding.growthHeadlineAbsolute.setTextColor(
+                    ContextCompat.getColor(requireContext(), absColor));
+            binding.growthHeadlineAbsolute.setVisibility(View.VISIBLE);
+        } else {
+            binding.growthHeadlineAbsolute.setVisibility(View.GONE);
+        }
     }
 
     /**

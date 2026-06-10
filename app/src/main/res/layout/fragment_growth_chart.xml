@@ -70,17 +70,36 @@
                             android:textAppearance="@style/TextAppearance.FinMon.Kicker"
                             tools:text="PERIOD P&amp;L · 1y" />
 
-                        <!-- Headline: signed percentage. Color flips with sign per design. -->
-                        <TextView
-                            android:id="@+id/growthHeadline"
+                        <!-- Headline: signed percentage + absolute growth beside it.
+                             Both colors flip with sign per design. -->
+                        <LinearLayout
+                            android:orientation="horizontal"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:textAppearance="@style/TextAppearance.FinMon.Display.Headline"
-                            android:textFontWeight="500"
-                            android:letterSpacing="-0.025"
-                            android:layout_marginTop="2dp"
-                            tools:text="+12.4%"
-                            tools:textColor="@color/pnl_positive" />
+                            android:baselineAligned="true"
+                            android:layout_marginTop="2dp">
+
+                            <TextView
+                                android:id="@+id/growthHeadline"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.FinMon.Display.Headline"
+                                android:textFontWeight="500"
+                                android:letterSpacing="-0.025"
+                                tools:text="+12.4%"
+                                tools:textColor="@color/pnl_positive" />
+
+                            <TextView
+                                android:id="@+id/growthHeadlineAbsolute"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.FinMon.Mono.Medium"
+                                android:layout_marginStart="10dp"
+                                android:layout_gravity="bottom"
+                                android:layout_marginBottom="6dp"
+                                tools:text="+5,066 USD"
+                                tools:textColor="@color/pnl_positive" />
+                        </LinearLayout>
                     </LinearLayout>
                 </FrameLayout>
 

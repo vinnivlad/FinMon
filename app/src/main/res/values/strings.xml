@@ -47,6 +47,24 @@
     <string name="field_from_amount">From amount</string>
     <string name="field_to_currency">To currency</string>
     <string name="field_to_amount">To amount</string>
+
+    <!-- "+" chooser bottom sheet (Portfolio FAB) -->
+    <string name="add_chooser_title">What would you like to add?</string>
+    <string name="add_chooser_trade_title">Trade</string>
+    <string name="add_chooser_trade_subtitle">Buy, sell, or convert a holding</string>
+    <string name="add_chooser_cash_title">Cash</string>
+    <string name="add_chooser_cash_subtitle">Deposit or withdraw money</string>
+
+    <!-- Cash deposit / withdrawal screen -->
+    <string name="cash_title">Deposit or withdrawal</string>
+    <string name="cash_help">Record money moving in or out of your brokerage account. Stamped at the current date and time.</string>
+    <string name="cash_section_direction">Direction</string>
+    <string name="cash_direction_deposit">Deposit</string>
+    <string name="cash_direction_withdrawal">Withdrawal</string>
+    <string name="cash_field_currency">Currency</string>
+    <string name="cash_field_amount">Amount</string>
+    <string name="cash_amount_help">Amount of cash moved, in the selected currency.</string>
+    <string name="cash_amount_positive">Must be positive</string>
     <string name="field_conversion_help">Records an in-brokerage cash conversion (no market trade). Implicit FX = to / from.</string>
     <string name="error_same_currency">From and To must be different currencies</string>
 

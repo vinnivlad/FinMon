@@ -207,6 +207,20 @@ public class ValueChartPageFragment extends Fragment {
 
         renderHeadlineSplit(t.valueEnd, t.currency);
 
+        // Cross-currency ribbon (All mode only) — period-end value in the other
+        // currencies, "≈ 116,584.00 EUR · 6,013,402.00 UAH", same as Portfolio.
+        if (cd.valueEquivalents == null || cd.valueEquivalents.isEmpty()) {
+            binding.totalDisplayEquivalents.setVisibility(View.GONE);
+        } else {
+            StringBuilder others = new StringBuilder();
+            for (ValueChartViewModel.Equivalent e : cd.valueEquivalents) {
+                if (others.length() > 0) others.append(" · ");
+                others.append(MONEY.format(e.amount)).append(' ').append(e.currency.name());
+            }
+            binding.totalDisplayEquivalents.setText("≈ " + others);
+            binding.totalDisplayEquivalents.setVisibility(View.VISIBLE);
+        }
+
         // Invested line: lower-case "Invested" + mono value, mirror of Portfolio.
         binding.totalInvested.setText(getString(
                 R.string.totals_invested_label,

@@ -287,6 +287,7 @@ public class MainActivity extends AppCompatActivity {
         if (destinationId == R.id.settingsFragment)          return R.string.settings_title;
         if (destinationId == R.id.addAssetFragment)          return R.string.add_asset_title;
         if (destinationId == R.id.addTradeFragment)          return R.string.add_trade_title;
+        if (destinationId == R.id.cashFragment)              return R.string.cash_title;
         if (destinationId == R.id.manualEventFragment)       return R.string.manual_event_title;
         if (destinationId == R.id.assetTaxOverridesFragment) return R.string.tax_overrides_title;
         if (destinationId == R.id.eventLogFragment)          return R.string.event_log_title;

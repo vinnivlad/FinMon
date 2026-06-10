@@ -244,6 +244,39 @@
         <item name="elevationOverlayEnabled">false</item>
     </style>
 
+    <!-- ========== Bottom sheet (Portfolio "+" chooser, etc.) ========== -->
+
+    <!--
+        Editorial overlay for BottomSheetDialog. Wired via Theme.FinMon →
+        bottomSheetDialogTheme. The modal sheet's background tint is
+        ?attr/colorSurfaceContainerLow; without pinning the surfaceContainer*
+        roles (and disabling the tonal-elevation overlay) M3 derives them from a
+        tonal palette and the sheet renders with the same purple wash the
+        AlertDialog overlay fixes. Same surface pins as the dialogs above.
+    -->
+    <style name="ThemeOverlay.FinMon.BottomSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="colorPrimary">@color/fm_ink</item>
+        <item name="colorOnPrimary">@color/fm_bg</item>
+        <item name="colorSurface">@color/fm_bg_raised</item>
+        <item name="colorOnSurface">@color/fm_ink</item>
+        <item name="colorSurfaceVariant">@color/fm_rule</item>
+        <item name="colorOnSurfaceVariant">@color/fm_ink_soft</item>
+        <item name="android:colorBackground">@color/fm_bg_raised</item>
+        <item name="colorOnBackground">@color/fm_ink</item>
+        <item name="colorOutline">@color/fm_rule_strong</item>
+        <item name="colorOutlineVariant">@color/fm_rule</item>
+
+        <item name="colorSurfaceContainer">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerLow">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerLowest">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerHigh">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerHighest">@color/fm_bg_raised</item>
+        <item name="colorSurfaceBright">@color/fm_bg_raised</item>
+        <item name="colorSurfaceDim">@color/fm_bg</item>
+
+        <item name="elevationOverlayEnabled">false</item>
+    </style>
+
     <!-- ========== FAB ========== -->
 
     <style name="ShapeAppearance.FinMon.Square" parent="">

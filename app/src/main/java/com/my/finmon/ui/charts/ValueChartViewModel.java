@@ -127,8 +127,9 @@ public final class ValueChartViewModel extends ViewModel {
                         points.add(new Point(s.date, s.value, s.invested, s.hasFxGaps));
                         if (s.hasFxGaps) anyGaps = true;
                     }
+                    PortfolioTotals todayTotals = null;
                     if (includeToday) {
-                        PortfolioTotals todayTotals = repo.getPortfolioTotals(today).get();
+                        todayTotals = repo.getPortfolioTotals(today).get();
                         BigDecimal v = todayTotals.valueByDisplayCurrency.get(display);
                         BigDecimal i = todayTotals.investedByDisplayCurrency.get(display);
                         boolean todayGap = todayTotals.hasFxGaps || v == null || i == null;
@@ -137,7 +138,19 @@ public final class ValueChartViewModel extends ViewModel {
                         points.add(new Point(today, v, i, todayGap));
                         if (todayGap) anyGaps = true;
                     }
-                    data.postValue(new ChartData(display, period, custom, points, anyGaps));
+                    // Cross-currency ribbon: the period-end value expressed in the other
+                    // currencies (same source the Portfolio totals card uses). Computed at
+                    // the last rendered point's date so it matches the headline; reuse
+                    // today's totals when that point is today.
+                    List<Equivalent> equivalents = null;
+                    if (!points.isEmpty()) {
+                        LocalDate endDate = points.get(points.size() - 1).date;
+                        PortfolioTotals endTotals = (todayTotals != null && endDate.equals(today))
+                                ? todayTotals
+                                : repo.getPortfolioTotals(endDate).get();
+                        equivalents = buildEquivalents(endTotals.valueByDisplayCurrency, display);
+                    }
+                    data.postValue(new ChartData(display, period, custom, points, anyGaps, equivalents));
                 } else {
                     // Native single-currency view — no FX, no gaps.
                     List<ConvertedSnapshot> snapshots = (snapTo.isBefore(from))
@@ -153,12 +166,32 @@ public final class ValueChartViewModel extends ViewModel {
                         BigDecimal i = bucket != null ? bucket.invested : BigDecimal.ZERO;
                         points.add(new Point(today, v, i, false));
                     }
-                    data.postValue(new ChartData(currency, period, custom, points, false));
+                    // Specific-currency mode is FX-free — no cross-currency ribbon.
+                    data.postValue(new ChartData(currency, period, custom, points, false, null));
                 }
             } catch (Exception e) {
                 Log.w(TAG, "refresh failed", e);
             }
         });
+    }
+
+    /**
+     * Same total expressed in each Currency other than {@code primary}, ordered by
+     * Currency declaration (USD, EUR, UAH) for stable layout. Mirrors
+     * {@code PortfolioViewModel.buildRibbon}.
+     */
+    @NonNull
+    private static List<Equivalent> buildEquivalents(
+            @NonNull java.util.Map<Currency, BigDecimal> valueByDisplayCurrency,
+            @NonNull Currency primary) {
+        List<Equivalent> out = new ArrayList<>();
+        for (Currency c : Currency.values()) {
+            if (c == primary) continue;
+            BigDecimal v = valueByDisplayCurrency.get(c);
+            if (v == null) continue;
+            out.add(new Equivalent(c, v));
+        }
+        return out;
     }
 
     @NonNull
@@ -182,6 +215,17 @@ public final class ValueChartViewModel extends ViewModel {
         };
     }
 
+    /** One entry of the cross-currency ribbon — the period-end value in {@link #currency}. */
+    public static final class Equivalent {
+        @NonNull public final Currency currency;
+        @NonNull public final BigDecimal amount;
+
+        public Equivalent(@NonNull Currency currency, @NonNull BigDecimal amount) {
+            this.currency = currency;
+            this.amount = amount;
+        }
+    }
+
     public static final class ChartData {
         /** Currency the {@code value}/{@code invested} fields are denominated in. */
         @NonNull public final Currency currency;
@@ -189,18 +233,22 @@ public final class ValueChartViewModel extends ViewModel {
         @Nullable public final CustomRange customRange;
         @NonNull public final List<Point> points;
         public final boolean hasAnyGaps;
+        /** Period-end value in the other currencies — non-null only in "All" mode. */
+        @Nullable public final List<Equivalent> valueEquivalents;
 
         public ChartData(
                 @NonNull Currency currency,
                 @Nullable FilterPeriod period,
                 @Nullable CustomRange customRange,
                 @NonNull List<Point> points,
-                boolean hasAnyGaps) {
+                boolean hasAnyGaps,
+                @Nullable List<Equivalent> valueEquivalents) {
             this.currency = currency;
             this.period = period;
             this.customRange = customRange;
             this.points = points;
             this.hasAnyGaps = hasAnyGaps;
+            this.valueEquivalents = valueEquivalents;
         }
 
         /**

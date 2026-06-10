@@ -236,6 +236,22 @@ public final class GrowthChartViewModel extends ViewModel {
         public BigDecimal endPct() {
             return points.isEmpty() ? null : points.get(points.size() - 1).pct;
         }
+
+        /**
+         * Absolute growth over the window in {@link #currency} — the numerator behind
+         * {@link #endPct()}: {@code pnl(end) − pnl(anchor)}, where {@code pnl = value −
+         * invested}. The {@code points} list already drops pre-anchor entries, so the
+         * first point is the anchor. Capital deposited mid-window adds equally to value
+         * and invested, so it cancels — this is market-only growth, matching the %.
+         */
+        @Nullable
+        public BigDecimal endAbsolute() {
+            if (points.isEmpty()) return null;
+            Point first = points.get(0);
+            Point last = points.get(points.size() - 1);
+            return last.value.subtract(last.invested)
+                    .subtract(first.value.subtract(first.invested));
+        }
     }
 
     public static final class Point {

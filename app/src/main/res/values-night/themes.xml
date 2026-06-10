@@ -27,6 +27,16 @@
         <item name="colorOnSurfaceVariant">@color/fm_ink_soft</item>
         <item name="android:windowBackground">@color/fm_bg</item>
 
+        <!-- See light theme — pins surfaceContainer* to bg_raised so combo
+             popups / bottom sheets don't fall back to the tonal-palette purple. -->
+        <item name="colorSurfaceContainer">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerLow">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerLowest">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerHigh">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerHighest">@color/fm_bg_raised</item>
+        <item name="colorSurfaceBright">@color/fm_bg_raised</item>
+        <item name="colorSurfaceDim">@color/fm_bg</item>
+
         <item name="colorOutline">@color/fm_rule_strong</item>
         <item name="colorOutlineVariant">@color/fm_rule</item>
 
@@ -71,5 +81,7 @@
         <item name="chipStyle">@style/Widget.FinMon.Chip.Filter</item>
         <!-- See light theme — kills the purple tonal wash on MaterialAlertDialog. -->
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.FinMon.AlertDialog</item>
+        <!-- Same for BottomSheetDialog (Portfolio "+" chooser). -->
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.FinMon.BottomSheet</item>
     </style>
 </resources>

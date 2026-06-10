@@ -14,6 +14,7 @@ import androidx.navigation.fragment.NavHostFragment;
 import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.my.finmon.R;
 import com.my.finmon.data.model.AssetType;
 import com.my.finmon.data.model.Currency;
@@ -83,12 +84,31 @@ public class PortfolioFragment extends Fragment {
         viewModel.windowedHoldings().observe(getViewLifecycleOwner(), this::renderHoldings);
         viewModel.totalsCard().observe(getViewLifecycleOwner(), this::renderTotalsCard);
 
-        // Record trade is the only action behind the FAB at the moment, so skip the
-        // single-item popup and route the tap straight to the form.
-        binding.fab.setOnClickListener(v -> NavHostFragment.findNavController(this)
-                .navigate(R.id.action_portfolio_to_addTrade));
+        // The FAB now fans out to two destinations (a trade or a cash deposit /
+        // withdrawal), so the tap opens a chooser sheet instead of routing straight
+        // to a single form.
+        binding.fab.setOnClickListener(v -> showAddChooser());
         binding.eventLogButton.setOnClickListener(v -> NavHostFragment.findNavController(this)
                 .navigate(R.id.action_portfolio_to_eventLog));
+    }
+
+    /**
+     * "+" chooser: a bottom sheet offering a trade or a cash deposit / withdrawal.
+     * Each row dismisses the sheet and navigates to its form.
+     */
+    private void showAddChooser() {
+        BottomSheetDialog sheet = new BottomSheetDialog(requireContext());
+        View content = getLayoutInflater().inflate(R.layout.bottom_sheet_add_chooser, null);
+        sheet.setContentView(content);
+        content.findViewById(R.id.chooserTrade).setOnClickListener(v -> {
+            sheet.dismiss();
+            NavHostFragment.findNavController(this).navigate(R.id.action_portfolio_to_addTrade);
+        });
+        content.findViewById(R.id.chooserCash).setOnClickListener(v -> {
+            sheet.dismiss();
+            NavHostFragment.findNavController(this).navigate(R.id.action_portfolio_to_cash);
+        });
+        sheet.show();
     }
 
     private void renderHoldings(@Nullable List<WindowedHolding> active) {

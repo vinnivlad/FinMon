@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    "+" chooser, shown from the Portfolio FAB. Two tappable rows — Trade and Cash —
+    each a title over an italic one-line explanation, separated by a hairline rule.
+    Tapping a row routes to the matching form (see PortfolioFragment).
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="@dimen/fm_page_padding_h"
+    android:paddingTop="20dp"
+    android:paddingBottom="28dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/add_chooser_title"
+        android:textAppearance="@style/TextAppearance.FinMon.Kicker"
+        android:textColor="@color/fm_accent"
+        android:textFontWeight="700"
+        android:layout_marginBottom="14dp" />
+
+    <LinearLayout
+        android:id="@+id/chooserTrade"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="?attr/selectableItemBackground"
+        android:paddingVertical="12dp"
+        android:clickable="true"
+        android:focusable="true">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/add_chooser_trade_title"
+            android:textAppearance="@style/TextAppearance.FinMon.Body.Medium"
+            android:textSize="18sp"
+            android:textColor="?attr/colorOnBackground"
+            android:textFontWeight="700" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/add_chooser_trade_subtitle"
+            android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+            android:textSize="13sp"
+            android:layout_marginTop="2dp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/fm_rule_hairline"
+        android:layout_marginVertical="4dp"
+        android:background="?attr/colorOutlineVariant" />
+
+    <LinearLayout
+        android:id="@+id/chooserCash"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="?attr/selectableItemBackground"
+        android:paddingVertical="12dp"
+        android:clickable="true"
+        android:focusable="true">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/add_chooser_cash_title"
+            android:textAppearance="@style/TextAppearance.FinMon.Body.Medium"
+            android:textSize="18sp"
+            android:textColor="?attr/colorOnBackground"
+            android:textFontWeight="700" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/add_chooser_cash_subtitle"
+            android:textAppearance="@style/TextAppearance.FinMon.Body.Italic"
+            android:textSize="13sp"
+            android:layout_marginTop="2dp" />
+    </LinearLayout>
+</LinearLayout>

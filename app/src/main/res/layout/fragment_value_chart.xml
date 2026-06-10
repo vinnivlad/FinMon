@@ -93,17 +93,29 @@
                         tools:text="USD" />
                 </LinearLayout>
 
+                <!-- Cross-currency ribbon: period-end value in the other currencies.
+                     Shown only in "All" mode (mirrors the Portfolio totals card). -->
+                <TextView
+                    android:id="@+id/totalDisplayEquivalents"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.FinMon.Mono.Small"
+                    android:layout_marginTop="5dp"
+                    android:visibility="gone"
+                    tools:visibility="visible"
+                    tools:text="≈ 116,584.00 EUR · 6,013,402.00 UAH" />
+
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/fm_rule_hairline"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="8dp"
                     android:background="?attr/colorOutlineVariant" />
 
                 <LinearLayout
                     android:orientation="horizontal"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="8dp"
                     android:baselineAligned="true">
 
                     <TextView

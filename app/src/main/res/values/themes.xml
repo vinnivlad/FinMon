@@ -32,6 +32,23 @@
         <item name="colorOnSurfaceVariant">@color/fm_ink_soft</item>
         <item name="android:windowBackground">@color/fm_bg</item>
 
+        <!--
+            Pin every surfaceContainer* role to bg_raised (and Dim to bg). M3
+            components that draw on a "container" surface — exposed-dropdown
+            (combo) popups, bottom sheets, menus — otherwise derive these from a
+            tonal palette and fall back to a purple wash because colorPrimary is
+            overridden without supplying a full palette. Pinning here fixes them
+            app-wide; the AlertDialog / DatePicker / BottomSheet overlays repeat
+            the pins for the separate contexts they run in.
+        -->
+        <item name="colorSurfaceContainer">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerLow">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerLowest">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerHigh">@color/fm_bg_raised</item>
+        <item name="colorSurfaceContainerHighest">@color/fm_bg_raised</item>
+        <item name="colorSurfaceBright">@color/fm_bg_raised</item>
+        <item name="colorSurfaceDim">@color/fm_bg</item>
+
         <item name="colorOutline">@color/fm_rule_strong</item>
         <item name="colorOutlineVariant">@color/fm_rule</item>
 
@@ -84,5 +101,7 @@
              this overlay, M3 derives surfaceContainer* from a tonal palette and the
              dialog renders with a purple wash whenever colorPrimary is overridden. -->
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.FinMon.AlertDialog</item>
+        <!-- Same reasoning for BottomSheetDialog (Portfolio "+" chooser). -->
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.FinMon.BottomSheet</item>
     </style>
 </resources>
