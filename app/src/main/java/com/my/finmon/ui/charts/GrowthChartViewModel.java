@@ -18,6 +18,7 @@ import com.my.finmon.data.repository.PortfolioRepository.ConvertedSnapshot;
 import com.my.finmon.data.repository.PortfolioRepository.NativeBucket;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
 import com.my.finmon.prefs.UserPreferences;
+import com.my.finmon.sync.MarketDataRefreshBus;
 import com.my.finmon.ui.filter.FilterPeriod;
 import com.my.finmon.ui.filter.GlobalFilterViewModel;
 import com.my.finmon.ui.filter.GlobalFilterViewModel.CustomRange;
@@ -56,6 +57,9 @@ public final class GrowthChartViewModel extends ViewModel {
     private final Observer<Currency> filterCurrencyObserver = c -> refresh();
     private final Observer<FilterPeriod> filterPeriodObserver = p -> refresh();
     private final Observer<CustomRange> filterCustomRangeObserver = r -> refresh();
+    /** Fresh prices / FX landed from a sync — re-derive so an open screen re-marks
+     *  itself without waiting for the user to navigate away and back. */
+    private final Observer<Long> marketDataObserver = r -> refresh();
 
     public GrowthChartViewModel(
             @NonNull PortfolioRepository repo,
@@ -73,6 +77,7 @@ public final class GrowthChartViewModel extends ViewModel {
         filter.selectedCurrency().observeForever(filterCurrencyObserver);
         filter.selectedPeriod().observeForever(filterPeriodObserver);
         filter.customRange().observeForever(filterCustomRangeObserver);
+        MarketDataRefreshBus.revision().observeForever(marketDataObserver);
     }
 
     @Override
@@ -81,6 +86,7 @@ public final class GrowthChartViewModel extends ViewModel {
         filter.selectedCurrency().removeObserver(filterCurrencyObserver);
         filter.selectedPeriod().removeObserver(filterPeriodObserver);
         filter.customRange().removeObserver(filterCustomRangeObserver);
+        MarketDataRefreshBus.revision().removeObserver(marketDataObserver);
         super.onCleared();
     }
 

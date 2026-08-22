@@ -1,8 +1,16 @@
 package com.my.finmon;
 
+import android.animation.ObjectAnimator;
+import android.content.res.ColorStateList;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
+import android.view.animation.LinearInterpolator;
+import android.widget.ImageButton;
 
+import androidx.annotation.ColorRes;
+import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.biometric.BiometricManager;
@@ -11,6 +19,7 @@ import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.widget.ImageViewCompat;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.navigation.NavController;
 import androidx.navigation.NavDestination;
@@ -20,9 +29,11 @@ import androidx.navigation.ui.AppBarConfiguration;
 import androidx.navigation.ui.NavigationUI;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.snackbar.Snackbar;
 import com.my.finmon.databinding.ActivityMainBinding;
 import com.my.finmon.security.AppLockState;
 import com.my.finmon.sync.StartupSyncOrchestrator;
+import com.my.finmon.sync.StartupSyncOrchestrator.RefreshOutcome;
 import com.my.finmon.sync.StartupSyncOrchestrator.Stage;
 import com.my.finmon.sync.StartupSyncOrchestrator.Status;
 import com.my.finmon.ui.filter.GlobalFilterBinder;
@@ -46,6 +57,29 @@ public class MainActivity extends AppCompatActivity {
     private StartupSyncOrchestrator orchestrator;
     private NavController navController;
     private GlobalFilterViewModel filterVm;
+    /** How long the check / cross sits in place of the refresh icon after a manual run. */
+    private static final long REFRESH_BADGE_MS = 1600L;
+
+    /** Lazily built on the first background sync; reused for every spin afterwards. */
+    @androidx.annotation.Nullable private ObjectAnimator refreshSpin;
+    private final Runnable clearRefreshBadge =
+            () -> setRefreshIcon(R.drawable.ic_refresh, R.color.fm_ink_soft);
+
+    /**
+     * Foreground auto-refresh. While the app is resumed the orchestrator is nudged on this
+     * cadence so the portfolio keeps re-marking against live prices without the user having
+     * to leave and come back. The orchestrator applies its own staleness gate, so the tick
+     * on resume is free when a sync already ran recently.
+     */
+    private final Handler refreshHandler = new Handler(Looper.getMainLooper());
+    private final Runnable autoRefreshTick = new Runnable() {
+        @Override
+        public void run() {
+            if (orchestrator != null) orchestrator.refreshQuietly();
+            refreshHandler.postDelayed(
+                    this, StartupSyncOrchestrator.QUIET_REFRESH_INTERVAL_MS);
+        }
+    };
 
     /** Set while the system biometric/credential sheet is in front. Some devices
      *  put the calling activity through onStop while it's showing — without this
@@ -145,6 +179,12 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Manual refresh, next to the gear. Same reasoning as the gear for the placement:
+        // the masthead is the only chrome present on every destination, so market data can
+        // be pulled from wherever the user happens to be standing.
+        binding.masthead.mastheadRefreshButton.setOnClickListener(v -> orchestrator.refreshNow());
+        orchestrator.backgroundSyncActive().observe(this, this::renderRefreshSpin);
+
         binding.masthead.mastheadDate.setText(formatTodayKicker());
 
         navController.addOnDestinationChangedListener(this::onDestinationChanged);
@@ -191,6 +231,83 @@ public class MainActivity extends AppCompatActivity {
         // After import/trade the held-currency set may have changed — re-derive so the
         // chip row stays in sync with reality.
         if (filterVm != null) filterVm.refreshAvailableCurrencies();
+
+        // Restart the refresh cadence from now. The immediate first tick is what covers the
+        // "app was warm in the background overnight" case that the cold-start sync misses.
+        refreshHandler.removeCallbacks(autoRefreshTick);
+        refreshHandler.post(autoRefreshTick);
+    }
+
+    @Override
+    protected void onPause() {
+        // Nothing to refresh for while backgrounded; PortfolioSyncWorker owns that window.
+        refreshHandler.removeCallbacks(autoRefreshTick);
+        super.onPause();
+    }
+
+    /**
+     * Spins the masthead refresh icon while a background sync is in flight, then holds a
+     * result badge for a moment if the run was one the user asked for.
+     *
+     * <p>The badge exists because the spin alone isn't legible: a sync over a warm
+     * connection can finish inside a single frame, and LiveData coalesces a
+     * {@code postValue(true)} immediately followed by {@code postValue(false)} into just the
+     * last one — so on a fast refresh the icon may never visibly turn at all. The badge
+     * doesn't depend on the timing, which is what makes it the actual signal.
+     *
+     * <p>The button stays enabled throughout — the orchestrator drops a tap that lands on
+     * an in-flight run, and a spinning icon already says "working", so greying it out would
+     * only add a dead-looking control.
+     */
+    private void renderRefreshSpin(Boolean active) {
+        boolean spinning = Boolean.TRUE.equals(active);
+        if (spinning) {
+            // A new run supersedes any badge still on screen.
+            refreshHandler.removeCallbacks(clearRefreshBadge);
+            setRefreshIcon(R.drawable.ic_refresh, R.color.fm_ink_soft);
+            if (refreshSpin == null) {
+                refreshSpin = ObjectAnimator.ofFloat(
+                        binding.masthead.mastheadRefreshButton, View.ROTATION, 0f, 360f);
+                refreshSpin.setDuration(900L);
+                refreshSpin.setRepeatCount(ObjectAnimator.INFINITE);
+                refreshSpin.setInterpolator(new LinearInterpolator());
+            }
+            if (!refreshSpin.isStarted()) refreshSpin.start();
+            return;
+        }
+
+        if (refreshSpin != null) {
+            refreshSpin.cancel();
+            binding.masthead.mastheadRefreshButton.setRotation(0f);
+        }
+
+        // Null outcome = a timed tick, which reports nothing. consume* is one-shot, so
+        // rotation won't re-show a result the user has already seen.
+        RefreshOutcome outcome = (orchestrator == null) ? null : orchestrator.consumeManualOutcome();
+        if (outcome == null) return;
+
+        boolean ok = (outcome == RefreshOutcome.SUCCESS);
+        setRefreshIcon(
+                ok ? R.drawable.ic_check : R.drawable.ic_close,
+                ok ? R.color.pnl_positive : R.color.pnl_negative);
+        refreshHandler.postDelayed(clearRefreshBadge, REFRESH_BADGE_MS);
+
+        // The badge says something went wrong; the Snackbar is what says why.
+        if (!ok) {
+            Snackbar.make(
+                            binding.getRoot(),
+                            R.string.masthead_refresh_failed,
+                            Snackbar.LENGTH_LONG)
+                    .setAnchorView(binding.bottomNav)
+                    .show();
+        }
+    }
+
+    private void setRefreshIcon(@DrawableRes int icon, @ColorRes int tint) {
+        ImageButton button = binding.masthead.mastheadRefreshButton;
+        button.setImageResource(icon);
+        ImageViewCompat.setImageTintList(
+                button, ColorStateList.valueOf(ContextCompat.getColor(this, tint)));
     }
 
     private void showLockOverlay() {

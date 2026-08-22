@@ -7,6 +7,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
 
@@ -14,6 +15,7 @@ import com.my.finmon.ServiceLocator;
 import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.PortfolioRepository;
 import com.my.finmon.data.repository.PortfolioRepository.TradeRow;
+import com.my.finmon.sync.MarketDataRefreshBus;
 import com.my.finmon.ui.filter.FilterPeriod;
 import com.my.finmon.ui.filter.GlobalFilterViewModel.CustomRange;
 
@@ -45,6 +47,13 @@ public final class CurrencyPageViewModel extends ViewModel {
     private FilterPeriod lastPeriod;
     @Nullable private CustomRange lastRange;
 
+    /** Fresh prices / FX landed from a sync — re-run the last query so an open page
+     *  re-marks itself. Goes straight to {@link #load} because {@link #reload} would
+     *  short-circuit: the filter hasn't moved, only the underlying data has. */
+    private final Observer<Long> marketDataObserver = r -> {
+        if (lastPeriod != null) load(lastPeriod, lastRange);
+    };
+
     public CurrencyPageViewModel(
             @NonNull PortfolioRepository repo,
             @NonNull ExecutorService viewExecutor,
@@ -52,6 +61,13 @@ public final class CurrencyPageViewModel extends ViewModel {
         this.repo = repo;
         this.viewExecutor = viewExecutor;
         this.currency = currency;
+        MarketDataRefreshBus.revision().observeForever(marketDataObserver);
+    }
+
+    @Override
+    protected void onCleared() {
+        MarketDataRefreshBus.revision().removeObserver(marketDataObserver);
+        super.onCleared();
     }
 
     @NonNull public LiveData<List<TradeRow>> rows() { return rows; }
@@ -62,6 +78,12 @@ public final class CurrencyPageViewModel extends ViewModel {
         // range argument is irrelevant and won't trigger a reload on its own.
         boolean rangeChanged = (p == FilterPeriod.CUSTOM) && !sameRange(range, lastRange);
         if (p == lastPeriod && !rangeChanged) return;
+        load(p, range);
+    }
+
+    /** Unconditional query — {@link #reload} owns the "did the filter actually move?"
+     *  decision, so anything that knows the data changed can call straight in here. */
+    private void load(@NonNull FilterPeriod p, @Nullable CustomRange range) {
         lastPeriod = p;
         lastRange = range;
 

@@ -43,6 +43,15 @@ public final class SyncEngine {
 
     private static final String TAG = "SyncEngine";
     private static final int BOOTSTRAP_DAYS = 7;
+    /**
+     * How far back of already-stored price history each run re-fetches. Today's bar is a
+     * live, still-moving quote and yesterday's may have been written mid-session by an
+     * earlier run, so starting the window after the newest stored row would freeze those
+     * provisional values forever. One day of overlap also covers a midnight rollover —
+     * the day that was "today" at 23:55 is re-fetched (and settles) before
+     * {@link #syncPortfolioSnapshots} writes it into history.
+     */
+    private static final int PROVISIONAL_TAIL_DAYS = 1;
 
     public enum Stage { STOCK_PRICES, FX, BOND_COUPONS, SNAPSHOTS }
 
@@ -76,17 +85,28 @@ public final class SyncEngine {
     /**
      * Runs all four stages in order. Per-stage exceptions for individual items are
      * caught inside; this method only throws if something structural goes wrong.
+     *
+     * <p>Prices and FX sync through <em>today</em>, so holdings are marked against the
+     * live intraday quote instead of the previous session's close. Snapshots deliberately
+     * still stop at yesterday: today's value is provisional until the session closes, and
+     * freezing a mid-session number into {@code portfolio_value} would bake a half-formed
+     * day into history that nothing would ever recompute.
      */
     public static void runAll(@NonNull ServiceLocator sl, @NonNull ProgressCallback cb) {
-        LocalDate yesterday = LocalDate.now().minusDays(1);
-        syncStockPrices(sl, yesterday, cb);
-        syncFxRates(sl, yesterday, cb);
+        LocalDate today = LocalDate.now();
+        syncStockPrices(sl, today, cb);
+        syncFxRates(sl, today, cb);
         syncBondCoupons(sl, cb);
-        syncPortfolioSnapshots(sl, yesterday, cb);
+        syncPortfolioSnapshots(sl, today.minusDays(1), cb);
     }
 
+    /**
+     * Daily closes up to and including {@code through} — normally today, so the newest
+     * row is the live quote. See {@link #PROVISIONAL_TAIL_DAYS} for why the fetch window
+     * reaches back over rows we already have rather than starting after them.
+     */
     public static void syncStockPrices(
-            @NonNull ServiceLocator sl, @NonNull LocalDate yesterday, @NonNull ProgressCallback cb) {
+            @NonNull ServiceLocator sl, @NonNull LocalDate through, @NonNull ProgressCallback cb) {
         StockPriceDao priceDao = sl.database().stockPriceDao();
         MarketDataRepository md = sl.marketDataRepository();
         PortfolioRepository portfolio = sl.portfolioRepository();
@@ -106,13 +126,15 @@ public final class SyncEngine {
             cb.onProgress(Stage.STOCK_PRICES, idx, total, stock.ticker);
 
             LocalDate latest = priceDao.latestDate(stock.ticker);
-            LocalDate from = (latest != null) ? latest.plusDays(1) : yesterday.minusDays(BOOTSTRAP_DAYS);
-            if (from.isAfter(yesterday)) continue;
+            LocalDate from = (latest != null)
+                    ? latest.minusDays(PROVISIONAL_TAIL_DAYS)
+                    : through.minusDays(BOOTSTRAP_DAYS);
+            if (from.isAfter(through)) continue;
 
             try {
                 DailyAndEvents result = md.fetchAndStoreStockPricesWithEvents(
-                        stock.remoteTicker, stock.ticker, from, yesterday).get();
-                Log.i(TAG, "Yahoo " + stock.remoteTicker + " " + from + "→" + yesterday + ": "
+                        stock.remoteTicker, stock.ticker, from, through).get();
+                Log.i(TAG, "Yahoo " + stock.remoteTicker + " " + from + "→" + through + ": "
                         + result.prices.size() + " prices, "
                         + result.dividends.size() + " divs, "
                         + result.splits.size() + " splits");
@@ -141,20 +163,26 @@ public final class SyncEngine {
         }
     }
 
+    /**
+     * Frankfurter rates up to and including {@code through} (normally today). Unlike
+     * prices there is no provisional-row problem: a published rate for a given date is
+     * final, and dates the ECB hasn't published yet simply come back absent, so the
+     * window can start straight after the newest row we hold.
+     */
     public static void syncFxRates(
-            @NonNull ServiceLocator sl, @NonNull LocalDate yesterday, @NonNull ProgressCallback cb) {
+            @NonNull ServiceLocator sl, @NonNull LocalDate through, @NonNull ProgressCallback cb) {
         ExchangeRateDao fxDao = sl.database().exchangeRateDao();
         cb.onProgress(Stage.FX, 0, 0, "EUR/USD/UAH");
 
         // EUR→USD is in every Frankfurter response we care about, so it's a reliable
         // bellwether for "what's the most recent FX date we have?".
         LocalDate latest = fxDao.latestDate(Currency.EUR, Currency.USD);
-        LocalDate from = (latest != null) ? latest.plusDays(1) : yesterday.minusDays(BOOTSTRAP_DAYS);
-        if (from.isAfter(yesterday)) return;
+        LocalDate from = (latest != null) ? latest.plusDays(1) : through.minusDays(BOOTSTRAP_DAYS);
+        if (from.isAfter(through)) return;
 
         try {
-            Integer rows = sl.marketDataRepository().fetchAndStoreFxRates(from, yesterday).get();
-            Log.i(TAG, "Frankfurter " + from + "→" + yesterday + ": " + rows + " rows");
+            Integer rows = sl.marketDataRepository().fetchAndStoreFxRates(from, through).get();
+            Log.i(TAG, "Frankfurter " + from + "→" + through + ": " + rows + " rows");
         } catch (Exception e) {
             Log.w(TAG, "Frankfurter sync failed", e);
             throw new StageFailedException(Stage.FX,

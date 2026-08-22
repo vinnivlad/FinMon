@@ -6,6 +6,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
 
@@ -14,6 +15,7 @@ import com.my.finmon.data.model.Currency;
 import com.my.finmon.data.repository.PortfolioRepository;
 import com.my.finmon.data.repository.PortfolioRepository.NativeBucket;
 import com.my.finmon.data.repository.PortfolioRepository.PortfolioTotals;
+import com.my.finmon.sync.MarketDataRefreshBus;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -37,12 +39,23 @@ public final class CurrencyBreakdownViewModel extends ViewModel {
     private final MutableLiveData<List<Currency>> currencies = new MutableLiveData<>();
     private final MutableLiveData<PortfolioTotals> totals = new MutableLiveData<>();
 
+    /** Fresh prices / FX landed from a sync — re-derive so an open screen re-marks
+     *  itself without waiting for the user to navigate away and back. */
+    private final Observer<Long> marketDataObserver = r -> refresh();
+
     public CurrencyBreakdownViewModel(
             @NonNull PortfolioRepository repo,
             @NonNull ExecutorService viewExecutor) {
         this.repo = repo;
         this.viewExecutor = viewExecutor;
+        MarketDataRefreshBus.revision().observeForever(marketDataObserver);
         refresh();
+    }
+
+    @Override
+    protected void onCleared() {
+        MarketDataRefreshBus.revision().removeObserver(marketDataObserver);
+        super.onCleared();
     }
 
     @NonNull public LiveData<List<Currency>> currencies() { return currencies; }

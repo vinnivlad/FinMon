@@ -48,7 +48,6 @@ import java.util.Map;
  */
 public class GrowthPageFragment extends Fragment {
 
-    private static final DateTimeFormatter X_LABEL_FMT = DateTimeFormatter.ofPattern("MMM d");
     private static final DateTimeFormatter MONTH_YEAR_FMT =
             DateTimeFormatter.ofPattern("MMM yyyy", Locale.getDefault());
 
@@ -191,14 +190,11 @@ public class GrowthPageFragment extends Fragment {
             sets.add(buildSet(current, segmentColor(current, posColor, negColor)));
         }
 
-        binding.growthChart.getXAxis().setValueFormatter(new ValueFormatter() {
-            @Override
-            public String getFormattedValue(float value) {
-                return x0.plusDays((long) value).format(X_LABEL_FMT);
-            }
-        });
-
         binding.growthChart.setData(new LineData(sets));
+        // After setData: the axis helper reads the chart's visible x-range to pick its label
+        // band, and that range only reflects the new series once the data is in.
+        ChartDateAxis.apply(
+                binding.growthChart, x0, gd.points.get(gd.points.size() - 1).date);
         binding.growthChart.notifyDataSetChanged();
         binding.growthChart.invalidate();
     }

@@ -263,8 +263,11 @@ public final class AddTradeViewModel extends ViewModel {
     }
 
     private void kickoffBackfills(@NonNull AssetEntity asset, @NonNull LocalDate tradeDate) {
-        LocalDate yesterday = LocalDate.now().minusDays(1);
-        if (tradeDate.isAfter(yesterday)) return;  // future-dated trade — periodic worker handles it
+        // Backfill through today, not yesterday: a trade entered today is the common case,
+        // and stopping at yesterday meant a same-day purchase got no price row at all until
+        // the next sync — the holding would sit unpriced or marked to a stale close.
+        LocalDate today = LocalDate.now();
+        if (tradeDate.isAfter(today)) return;  // future-dated trade — periodic worker handles it
 
         if (asset.remoteTicker != null && !asset.remoteTicker.isBlank()) {
             // Same call returns prices + dividend/split events; ingest the latter so any
@@ -273,7 +276,7 @@ public final class AddTradeViewModel extends ViewModel {
             viewExecutor.execute(() -> {
                 try {
                     DailyAndEvents r = marketData.fetchAndStoreStockPricesWithEvents(
-                            asset.remoteTicker, asset.ticker, tradeDate, yesterday).get();
+                            asset.remoteTicker, asset.ticker, tradeDate, today).get();
                     List<DividendIngest> divs = new ArrayList<>(r.dividends.size());
                     for (YahooClient.DividendEvent d : r.dividends) {
                         divs.add(new DividendIngest(d.at, d.perShareAmount));
@@ -294,7 +297,7 @@ public final class AddTradeViewModel extends ViewModel {
         // covering every day from the earliest trade forward. Re-fetching an
         // already-stored range is harmless (DAO upsert semantics).
         if (asset.currency != Currency.EUR) {
-            marketData.fetchAndStoreFxRates(tradeDate, yesterday);
+            marketData.fetchAndStoreFxRates(tradeDate, today);
         }
     }
 

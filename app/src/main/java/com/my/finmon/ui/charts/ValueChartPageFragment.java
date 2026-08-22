@@ -14,7 +14,6 @@ import androidx.lifecycle.ViewModelProvider;
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
-import com.github.mikephil.charting.formatter.ValueFormatter;
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet;
 import com.my.finmon.R;
 import com.my.finmon.data.model.Currency;
@@ -39,7 +38,6 @@ public class ValueChartPageFragment extends Fragment {
     private FragmentValueChartBinding binding;
     private ValueChartViewModel viewModel;
 
-    private static final DateTimeFormatter X_LABEL_FMT = DateTimeFormatter.ofPattern("MMM d");
     private static final DateTimeFormatter MONTH_YEAR_FMT =
             DateTimeFormatter.ofPattern("MMM yyyy");
     private static final DateTimeFormatter MONTH_FMT = DateTimeFormatter.ofPattern("MMM");
@@ -181,14 +179,10 @@ public class ValueChartPageFragment extends Fragment {
         sets.add(valueSet);
         sets.add(investedSet);
 
-        binding.chart.getXAxis().setValueFormatter(new ValueFormatter() {
-            @Override
-            public String getFormattedValue(float value) {
-                return x0.plusDays((long) value).format(X_LABEL_FMT);
-            }
-        });
-
         binding.chart.setData(new LineData(sets));
+        // After setData: the axis helper reads the chart's visible x-range to pick its label
+        // band, and that range only reflects the new series once the data is in.
+        ChartDateAxis.apply(binding.chart, x0, cd.points.get(cd.points.size() - 1).date);
         binding.chart.notifyDataSetChanged();
         binding.chart.invalidate();
     }

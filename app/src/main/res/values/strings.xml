@@ -207,6 +207,10 @@
     <string name="analytics_empty">No holdings to break down yet.</string>
     <string name="analytics_fx_gap_hint">Some currencies are missing FX rates — pies under-represent the portfolio for those.</string>
 
+    <!-- Masthead -->
+    <string name="masthead_action_refresh">Refresh market data</string>
+    <string name="masthead_refresh_failed">Couldn\'t refresh — check your connection.</string>
+
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>
     <string name="settings_section_display">Display</string>

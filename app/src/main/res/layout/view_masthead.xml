@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Editorial masthead — two rows: kicker date + gear button on top, screen title +
-    hairline rule fill + "FinMon" all-caps kicker below. Bottom border is a 2 dp ink
+    Editorial masthead — two rows: kicker date + refresh/gear buttons on top, screen title
+    + hairline rule fill + "FinMon" all-caps kicker below. Bottom border is a 2 dp ink
     stripe (ruleStrong) per the spec.
+
+    The masthead is the only chrome visible on every destination, which is why the manual
+    refresh lives here rather than on any one screen.
 
     Use via:
       <include android:id="@+id/masthead" layout="@layout/view_masthead" />
@@ -39,6 +42,18 @@
             android:layout_weight="1"
             android:textAppearance="@style/TextAppearance.FinMon.Kicker"
             tools:text="Friday · 2 May 2026" />
+
+        <ImageButton
+            android:id="@+id/mastheadRefreshButton"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="10dp"
+            android:src="@drawable/ic_refresh"
+            android:scaleType="centerInside"
+            android:background="@android:color/transparent"
+            android:padding="4dp"
+            app:tint="@color/fm_ink_soft"
+            android:contentDescription="@string/masthead_action_refresh" />
 
         <ImageButton
             android:id="@+id/mastheadSettingsButton"

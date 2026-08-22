@@ -16,6 +16,7 @@ import com.my.finmon.ServiceLocator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Foreground sync runner — drives the same {@link SyncEngine} stages the periodic
@@ -25,6 +26,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>Singleton-scoped (one per process) and held by {@link ServiceLocator}. The first
  * activity that observes its status drives the startup overlay. On rotation the
  * activity re-attaches to the same orchestrator — no re-run, no double-fetch.
+ *
+ * <p>Two entry points, deliberately different in temperament. {@link #start()} is the
+ * cold-start sync: loud, blocking, offers Retry, and runs once per process. That last
+ * part is why {@link #refreshQuietly()} exists — Android keeps a process alive for days,
+ * so an app that is only warm-resumed would otherwise never re-sync and would keep
+ * marking the portfolio against whatever prices it fetched the day the process started.
+ * The quiet path re-runs on a timer with no UI at all and swallows its failures.
  */
 public final class StartupSyncOrchestrator {
 
@@ -82,6 +90,16 @@ public final class StartupSyncOrchestrator {
     /** Sentinel error message — recognised by the UI to render the no-internet copy. */
     public static final String ERROR_NO_INTERNET = "NO_INTERNET";
 
+    /** How a user-initiated refresh ended, for the masthead's brief result badge. */
+    public enum RefreshOutcome { SUCCESS, FAILURE }
+
+    /**
+     * Minimum spacing between quiet refreshes. Also the cadence the foreground timer in
+     * {@code MainActivity} ticks at, so a resume inside the window is a no-op rather than
+     * an extra round-trip.
+     */
+    public static final long QUIET_REFRESH_INTERVAL_MS = 15 * 60 * 1000L;
+
     private final ServiceLocator sl;
     private final Context appContext;
     private final ExecutorService syncExecutor;
@@ -93,6 +111,18 @@ public final class StartupSyncOrchestrator {
     /** One-shot signal: the most recent run was a successful import. Consumed by the UI
      *  via {@link #consumeImportJustFinished} so it can route to the Portfolio screen. */
     private final AtomicBoolean importJustFinished = new AtomicBoolean(false);
+    /** Wall-clock of the last sync that completed without throwing. Zero until the first
+     *  one lands, which is fine — {@code running} is what actually keeps the cold-start
+     *  sync and a quiet refresh from overlapping. */
+    private volatile long lastSuccessAtMillis;
+    /** True while a background sync (timed or user-tapped) is in flight. Drives the
+     *  masthead refresh button's spin; deliberately separate from {@link #status}, which
+     *  only ever describes the blocking foreground path. */
+    private final MutableLiveData<Boolean> backgroundSyncActive = new MutableLiveData<>(false);
+    /** One-shot result of the last <em>user-initiated</em> refresh. Null when there's
+     *  nothing to report. Timed ticks never set it — nobody asked for those, so nobody
+     *  needs to hear how they went, either way. */
+    private final AtomicReference<RefreshOutcome> manualOutcome = new AtomicReference<>();
 
     public StartupSyncOrchestrator(@NonNull ServiceLocator sl, @NonNull Context appContext) {
         this.sl = sl;
@@ -193,6 +223,7 @@ public final class StartupSyncOrchestrator {
                 SyncEngine.syncPortfolioSnapshots(sl, yesterday, this::emit);
                 pendingImportJson = null;
                 importJustFinished.set(true);
+                markSynced();
                 status.postValue(new Status(Stage.DONE, 0, 0, "", null));
             } catch (SyncEngine.StageFailedException sfe) {
                 Log.w(TAG, "import sync stage " + sfe.stage + " failed: " + sfe.getMessage());
@@ -218,6 +249,94 @@ public final class StartupSyncOrchestrator {
         });
     }
 
+    /** True while a background sync is in flight — the masthead spins its refresh icon
+     *  off this. Never true for the cold-start path, which owns the blocking overlay. */
+    @NonNull
+    public LiveData<Boolean> backgroundSyncActive() { return backgroundSyncActive; }
+
+    /**
+     * One-shot read of how the refresh the user asked for went. Returns non-null at most
+     * once per run, so rotation can't re-show the result. Null means the last background
+     * sync was a timed one, which reports nothing.
+     */
+    @Nullable
+    public RefreshOutcome consumeManualOutcome() {
+        return manualOutcome.getAndSet(null);
+    }
+
+    /**
+     * Timed background refresh — the path that keeps the portfolio marked to the live
+     * market while the app sits open. {@code MainActivity} calls it on resume and every
+     * {@link #QUIET_REFRESH_INTERVAL_MS} thereafter, and the same interval gates it here so
+     * a resume inside the window costs nothing.
+     */
+    public void refreshQuietly() {
+        if (System.currentTimeMillis() - lastSuccessAtMillis < QUIET_REFRESH_INTERVAL_MS) return;
+        runBackgroundSync(/* manual */ false);
+    }
+
+    /**
+     * User tapped the masthead refresh button. Same machinery as {@link #refreshQuietly()},
+     * minus the staleness gate — an explicit ask should always go to the network — and plus
+     * a failure message, because silence in response to a deliberate tap reads as a broken
+     * button rather than as calm.
+     */
+    public void refreshNow() {
+        runBackgroundSync(/* manual */ true);
+    }
+
+    /**
+     * Background refresh with no blocking UI: no overlay, no progress stages, no Retry.
+     *
+     * <p>Two things keep it out of the foreground's way. It never posts to {@link #status},
+     * so the startup-overlay observer can't react to it. And it bails when a visible run
+     * owns the screen — a cold-start sync, an import, or an undismissed {@code FAILED} the
+     * user still has to answer.
+     *
+     * <p>Failures are swallowed. A dropped connection on a timed tick is not worth
+     * interrupting anyone for and the next tick just tries again; loud failure stays on the
+     * cold-start path the user is already waiting on. A {@code manual} run additionally
+     * records its result in {@link #consumeManualOutcome()} so the caller can show it.
+     *
+     * <p>On success it ticks {@link MarketDataRefreshBus} so whatever screen is open
+     * re-derives; without that the fresh rows would sit in the DB unnoticed until the user
+     * navigated away and back.
+     */
+    private void runBackgroundSync(boolean manual) {
+        Status current = status.getValue();
+        if (current != null && current.stage != Stage.DONE && current.stage != Stage.IDLE) return;
+        // Already syncing: the icon is spinning for the in-flight run, so a second tap
+        // reads as "yes, it's working" rather than as a dropped press.
+        if (!running.compareAndSet(false, true)) return;
+        backgroundSyncActive.postValue(true);
+        syncExecutor.execute(() -> {
+            try {
+                if (!hasNetwork()) {
+                    if (manual) manualOutcome.set(RefreshOutcome.FAILURE);
+                    return;
+                }
+                SyncEngine.runAll(sl, SyncEngine.ProgressCallback.NO_OP);
+                markSynced();
+                if (manual) manualOutcome.set(RefreshOutcome.SUCCESS);
+            } catch (Exception e) {
+                Log.i(TAG, "background refresh failed: "
+                        + (e.getMessage() != null ? e.getMessage() : e.toString()));
+                if (manual) manualOutcome.set(RefreshOutcome.FAILURE);
+            } finally {
+                // Order matters: the outcome is set above, synchronously, so it's already
+                // readable by the time the observer wakes on the postValue below.
+                running.set(false);
+                backgroundSyncActive.postValue(false);
+            }
+        });
+    }
+
+    /** Records a successful sync and wakes any open screen so it re-reads the new rows. */
+    private void markSynced() {
+        lastSuccessAtMillis = System.currentTimeMillis();
+        MarketDataRefreshBus.bump();
+    }
+
     private void kickOff() {
         status.postValue(new Status(Stage.STARTING, 0, 0, "", null));
         syncExecutor.execute(() -> {
@@ -231,6 +350,7 @@ public final class StartupSyncOrchestrator {
                     return;
                 }
                 SyncEngine.runAll(sl, this::emit);
+                markSynced();
                 status.postValue(new Status(Stage.DONE, 0, 0, "", null));
             } catch (SyncEngine.StageFailedException sfe) {
                 Log.w(TAG, "stage " + sfe.stage + " failed: " + sfe.getMessage());
